@@ -188,22 +188,20 @@ fun RouteMap(
                     if (position == null) fitToRoute(map, it)
                 }
             }
-            // Bussola nativa MapLibre: abilitata, in alto a destra ma spostata in
-            // basso (sotto la search bar) e a sinistra (lontano dal FAB ricentra).
-            // Si nasconde da sola quando la mappa è a nord (tap = torna a nord).
+            // Bussola nativa MapLibre in basso a sinistra; si nasconde quando la
+            // mappa è a nord (tap = torna a nord). Logo/attribution OSM spostati a
+            // destra per non sovrapporsi.
             map.uiSettings.apply {
+                val d = context.resources.displayMetrics.density
                 isCompassEnabled = true
                 setCompassFadeFacingNorth(true)
-                setCompassGravity(android.view.Gravity.TOP or android.view.Gravity.END)
-                val d = context.resources.displayMetrics.density
-                setCompassMargins(0, (96 * d).toInt(), (16 * d).toInt(), 0)
+                setCompassGravity(android.view.Gravity.BOTTOM or android.view.Gravity.START)
+                setCompassMargins((16 * d).toInt(), 0, 0, (220 * d).toInt())
                 isRotateGesturesEnabled = true
-                // Logo + attribution OSM (obbligatoria) in basso a sinistra, alzati
-                // così non finiscono sotto la scheda inferiore.
-                setLogoGravity(android.view.Gravity.BOTTOM or android.view.Gravity.START)
-                setLogoMargins((8 * d).toInt(), 0, 0, (8 * d).toInt())
-                setAttributionGravity(android.view.Gravity.BOTTOM or android.view.Gravity.START)
-                setAttributionMargins((72 * d).toInt(), 0, 0, (8 * d).toInt())
+                setLogoGravity(android.view.Gravity.BOTTOM or android.view.Gravity.END)
+                setLogoMargins(0, 0, (8 * d).toInt(), (8 * d).toInt())
+                setAttributionGravity(android.view.Gravity.BOTTOM or android.view.Gravity.END)
+                setAttributionMargins(0, 0, (72 * d).toInt(), (8 * d).toInt())
             }
             map.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
@@ -291,8 +289,9 @@ private fun animateDriveCamera(map: MapLibreMap, position: GeoPoint, bearing: Do
         .tilt(if (threeD) DRIVE_TILT else 0.0)
         .bearing(if (threeD) (bearing ?: 0.0) else 0.0)
     if (threeD && h > 0) {
-        // padding (left, top, right, bottom): top alto spinge il target in basso.
-        builder.padding(doubleArrayOf(0.0, h * 0.45, 0.0, 0.0))
+        // padding (left, top, right, bottom): top alto spinge il target in basso,
+        // così l'indicatore utente sta sopra la card inferiore (non al centro).
+        builder.padding(doubleArrayOf(0.0, h * 0.62, 0.0, 0.0))
     }
     map.animateCamera(CameraUpdateFactory.newCameraPosition(builder.build()), 600)
 }

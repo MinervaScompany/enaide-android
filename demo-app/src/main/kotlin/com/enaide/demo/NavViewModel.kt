@@ -297,6 +297,12 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Risultato di ricerca scelto: mostra il punto nel bottom sheet (non naviga). */
+    fun selectSearchResult(place: GeocodedPlace) {
+        _searchResults.value = emptyList()
+        _selectedPlace.value = SelectedPlace(place.point, place.displayName, null)
+    }
+
     /** Azione sheet: naviga verso il luogo selezionato. */
     fun navigateToSelected() {
         val p = _selectedPlace.value ?: return
@@ -350,6 +356,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         _searchResults.value = emptyList()
         if (navState.value is NavigationState.Navigating) {
             // Tappa aggiunta al viaggio in corso: prima della destinazione, reroute live.
+            lastRerouteAt = System.currentTimeMillis() // evita che il reroute successivo si auto-inneschi
             navigator.dispatch(com.enaide.sdk.model.NavigationCommand.AddWaypoint(place.point))
             _tripPlan.value = _tripPlan.value.addStop(TripStop(place.point, place.displayName))
             return
@@ -716,8 +723,19 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         _planningMessage.value = null
     }
 
-    /** Comando event-centric: ricalcola il percorso (es. su deviazione). */
+    /** Istante (ms) dell'ultimo reroute, per il cooldown anti-loop. */
+    private var lastRerouteAt = 0L
+
+    /**
+     * Comando event-centric: ricalcola il percorso (es. su deviazione confermata).
+     * Con **cooldown**: ignora richieste troppo ravvicinate, così un reroute non
+     * innesca subito un altro reroute (loop quando si aggiungono tappe in corsa o
+     * la posizione resta deviata appena dopo il ricalcolo).
+     */
     fun recalculate() {
+        val now = System.currentTimeMillis()
+        if (now - lastRerouteAt < REROUTE_COOLDOWN_MS) return
+        lastRerouteAt = now
         navigator.dispatch(com.enaide.sdk.model.NavigationCommand.Recalculate)
     }
 
@@ -789,6 +807,9 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Debounce del ricalcolo percorso ad ogni modifica del piano. */
         const val ROUTE_DEBOUNCE_MS = 400L
+
+        /** Cooldown fra reroute consecutivi, per evitare loop di ricalcoli. */
+        const val REROUTE_COOLDOWN_MS = 5000L
 
         /** Sopra questa velocità (m/s, ~3.6 km/h) si usa il bearing GPS; sotto, la bussola. */
         const val COMPASS_SPEED_THRESHOLD = 1.0

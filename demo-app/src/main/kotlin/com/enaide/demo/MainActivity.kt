@@ -184,7 +184,8 @@ class MainActivity : ComponentActivity() {
 private fun AppShell(vm: NavViewModel) {
     val tab by vm.tab.collectAsState()
     val screen by vm.screen.collectAsState()
-    val navigating = screen is Screen.Driving || screen is Screen.Preview
+    // La tab "Naviga" appare SOLO con navigazione attiva (Driving), non in anteprima.
+    val navigating = screen is Screen.Driving
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Gli errori one-shot dell'SDK diventano snackbar.
@@ -397,7 +398,9 @@ private fun MapScreen(vm: NavViewModel) {
                 }
                 LazyColumn {
                     items(results) { place ->
-                        ResultRow(place) { expanded = false; vm.planTo(place) }
+                        // La ricerca NON avvia la navigazione: mostra il punto nel
+                        // bottom sheet (con azioni Naviga / Aggiungi tappa).
+                        ResultRow(place) { expanded = false; vm.selectSearchResult(place) }
                     }
                 }
                 message?.let {
@@ -443,7 +446,20 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
 
     Box(Modifier.fillMaxSize()) {
         val mapStyle by vm.mapStyle.collectAsState()
-        RouteMap(route = route, position = null, cameraState = cameraState, styleUri = mapStyle, modifier = Modifier.fillMaxSize())
+        RouteMap(route = route, position = null, cameraState = cameraState,
+            markers = tripMarkers(route),
+            onLongPress = { vm.selectPointOnMap(it) }, // anche in preview: aggiungi tappa dalla mappa
+            onMarkerClick = { vm.selectPoi(it) },
+            styleUri = mapStyle, modifier = Modifier.fillMaxSize())
+
+        // Sheet dettagli anche in preview (per "Aggiungi tappa").
+        val selectedPv by vm.selectedPlace.collectAsState()
+        selectedPv?.let { place ->
+            PlaceSheet(place,
+                onNavigate = { vm.navigateToSelected() },
+                onAddStop = { vm.addSelectedAsStop() },
+                onDismiss = { vm.dismissSelectedPlace() })
+        }
 
         FloatingActionButton(
             onClick = { vm.clearPlan(); vm.backToMap() },
@@ -581,24 +597,18 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
     Box(Modifier.fillMaxSize()) {
         val mapStyle by vm.mapStyle.collectAsState()
         RouteMap(route = route, position = progress.snappedLocation, bearing = bearing,
-            threeD = true, cameraState = cameraState, styleUri = mapStyle, modifier = Modifier.fillMaxSize())
+            threeD = true, cameraState = cameraState, markers = tripMarkers(route),
+            styleUri = mapStyle, modifier = Modifier.fillMaxSize())
 
-        Column(
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ManeuverBanner(nextStep?.maneuver, progress.distanceToNextManeuverMeters)
-            nextStep?.roadName?.let { road ->
-                Card {
-                    Text(road, Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                        textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
-                }
-            }
-            // Lane guidance: frecce corsie della manovra in arrivo.
-            nextStep?.lanes?.takeIf { it.isNotEmpty() }?.let { LaneBar(it) }
-        }
+        // Banner manovra unico in alto: freccia + distanza + frase, nome strada e
+        // corsie tutto dentro la stessa card.
+        ManeuverBanner(
+            maneuver = nextStep?.maneuver,
+            distanceToManeuverMeters = progress.distanceToNextManeuverMeters,
+            roadName = nextStep?.roadName,
+            lanes = nextStep?.lanes.orEmpty(),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(),
+        )
 
         // Cartello limite velocità (se noto per lo step corrente).
         step?.speedLimitKmh?.let { limit ->
@@ -613,9 +623,15 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 160.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.recenter)) }
 
+        // Card inferiore compatta: una riga di metriche + riga azioni.
         Card(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Metric(UnitFormatter.formatDuration(progress.durationRemainingSeconds), stringResource(R.string.metric_eta))
                     Metric(UnitFormatter.formatDistance(progress.distanceRemainingMeters), stringResource(R.string.metric_remaining))
                     Metric(UnitFormatter.formatSpeedKmh(speedMps), stringResource(R.string.metric_current_speed))
@@ -624,24 +640,23 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
                     Text(stringResource(R.string.off_route, UnitFormatter.formatDistance(off.distanceFromRouteMeters)),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
-                // Modalità manuale (GPS-less): l'utente avanza a mano allo step successivo.
-                if (vm.isManualMode) {
-                    Button(onClick = { vm.advanceStep() }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Filled.Navigation, contentDescription = null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.next_step))
+                // Azioni su una riga, compatte: prossimo step (manuale) / salta tappa / termina.
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (vm.isManualMode) {
+                        Button(onClick = { vm.advanceStep() }, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.next_step))
+                        }
                     }
-                }
-                // Viaggio multitappa: salta la prossima tappa intermedia.
-                if (vm.hasIntermediateStops) {
-                    OutlinedButton(onClick = { vm.skipNextStop() }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.skip_stop))
+                    if (vm.hasIntermediateStops) {
+                        OutlinedButton(onClick = { vm.skipNextStop() }, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.skip_stop))
+                        }
                     }
-                }
-                FilledTonalButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.terminate))
+                    FilledTonalButton(onClick = onStop, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.terminate))
+                    }
                 }
             }
         }
@@ -649,25 +664,44 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
 }
 
 @Composable
-private fun ManeuverBanner(maneuver: com.enaide.sdk.model.Maneuver?, distanceToManeuverMeters: Double) {
-    // Card nativa colorata con l'API ufficiale CardDefaults (colore = primary,
-    // brand del navigatore). Nessuna forma/elevazione custom.
+private fun ManeuverBanner(
+    maneuver: com.enaide.sdk.model.Maneuver?,
+    distanceToManeuverMeters: Double,
+    roadName: String? = null,
+    lanes: List<com.enaide.sdk.model.Lane> = emptyList(),
+    modifier: Modifier = Modifier,
+) {
+    // Tutto dentro un'unica card colorata (primary): freccia + distanza + frase,
+    // nome strada e corsie. Niente riquadri separati.
     Card(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
     ) {
         val ctx = LocalContext.current
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(maneuver?.let { ManeuverText.glyph(it) } ?: "↑", fontSize = 44.sp)
-            Column {
-                Text(UnitFormatter.formatDistance(distanceToManeuverMeters),
-                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                Text(maneuver?.let { ManeuverText.phrase(ctx, it, null) } ?: stringResource(R.string.proceed),
-                    style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(maneuver?.let { ManeuverText.glyph(it) } ?: "↑", fontSize = 40.sp)
+                Column(Modifier.weight(1f)) {
+                    Text(UnitFormatter.formatDistance(distanceToManeuverMeters),
+                        style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(maneuver?.let { ManeuverText.phrase(ctx, it, roadName) } ?: stringResource(R.string.proceed),
+                        style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            // Corsie sotto, ma nella stessa card.
+            if (lanes.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    lanes.forEach { lane ->
+                        Text(laneGlyph(lane.directions), fontSize = 20.sp,
+                            color = if (lane.active || lane.valid) MaterialTheme.colorScheme.onPrimary
+                                    else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f),
+                            fontWeight = if (lane.active) FontWeight.Bold else FontWeight.Normal)
+                    }
+                }
             }
         }
     }
@@ -995,28 +1029,6 @@ private fun PoiCategory.label(): String = stringResource(when (this) {
     PoiCategory.ATTRACTION -> R.string.poi_attraction
 })
 
-/** Barra corsie: per ogni corsia mostra le frecce; quelle valide/attive evidenziate. */
-@Composable
-private fun LaneBar(lanes: List<com.enaide.sdk.model.Lane>) {
-    Card {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            lanes.forEach { lane ->
-                val highlighted = lane.active || lane.valid
-                Text(
-                    text = laneGlyph(lane.directions),
-                    fontSize = 22.sp,
-                    color = if (highlighted) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outlineVariant,
-                    fontWeight = if (lane.active) FontWeight.Bold else FontWeight.Normal,
-                )
-            }
-        }
-    }
-}
-
 private fun laneGlyph(dirs: Set<LaneDirection>): String = when {
     LaneDirection.THROUGH in dirs -> "↑"
     LaneDirection.SLIGHT_LEFT in dirs -> "↖"
@@ -1061,6 +1073,16 @@ private fun PlaceSheet(
         }
     }
 }
+
+/** Marker tappa/destinazione dai waypoint del route (l'origine non si marca). */
+private fun tripMarkers(route: com.enaide.sdk.model.Route): List<MapMarker> =
+    route.waypoints.mapIndexedNotNull { i, p ->
+        when {
+            i == 0 -> null // origine = indicatore utente
+            i == route.waypoints.lastIndex -> MapMarker("dest", p, "", MarkerKind.DESTINATION)
+            else -> MapMarker("wp-$i", p, "", MarkerKind.WAYPOINT)
+        }
+    }
 
 /** Cartello limite velocità stile europeo: cerchio bianco, bordo rosso, numero nero. */
 @Composable
