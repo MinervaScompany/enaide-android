@@ -705,6 +705,23 @@ class OsrmRoutingClient : RoutingClient {
 // nello scope dell'app)
 ```
 
+### 10.1b Routing offline / provider custom
+
+`RoutingClient` è un'interfaccia: per usare un router **offline on-device** (es.
+GraphHopper o Valhalla locale) basta implementarla e iniettarla, senza toccare il
+resto dell'SDK:
+
+```kotlin
+val offline = MyOfflineRoutingClient(graphDir)   // implementa RoutingClient
+val navigator = EnaideNavigator.create(config, routingClient = offline)
+```
+
+Predisposto (`create(config, routingClient)` esiste). L'engine vero, la sorgente
+del grafo (estratto OSM regionale / graph pre-costruito) e la gestione download
+sono un'iterazione successiva: scelta non ancora fissata (GraphHopper Android è il
+candidato più maturo). Il `RoutingClient` offline può anche implementare
+`enrichWithSpeedLimits` leggendo i tag locali.
+
 ### 10.2 Sorgente di posizione custom
 
 Non esiste una "interfaccia LocationSource" perché ogni app ha esigenze

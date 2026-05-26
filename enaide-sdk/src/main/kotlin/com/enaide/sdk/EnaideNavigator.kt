@@ -109,5 +109,19 @@ public interface EnaideNavigator {
         @JvmStatic
         public fun create(config: EnaideConfig = EnaideConfig()): EnaideNavigator =
             com.enaide.sdk.internal.EnaideNavigatorImpl(config)
+
+        /**
+         * Crea un'istanza iniettando un [com.enaide.sdk.routing.RoutingClient]
+         * custom. È il punto d'estensione per il **routing offline** (un engine
+         * on-device come GraphHopper/Valhalla locale) o per qualunque altro
+         * provider: l'SDK non cambia, basta fornire un'altra implementazione
+         * dell'interfaccia di routing.
+         */
+        @JvmStatic
+        public fun create(
+            config: EnaideConfig,
+            routingClient: com.enaide.sdk.routing.RoutingClient,
+        ): EnaideNavigator =
+            com.enaide.sdk.internal.EnaideNavigatorImpl(config, routingClient)
     }
 }
