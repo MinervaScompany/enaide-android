@@ -33,7 +33,20 @@ public data class EnaideConfig(
     public val defaultProfile: com.enaide.sdk.model.TransportProfile = com.enaide.sdk.model.TransportProfile.AUTO,
     public val offRouteThresholdMeters: Double = 30.0,
     public val offRouteConfirmationCount: Int = 3,
+    /**
+     * Soglia off-route per il profilo pedonale, più ampia: a piedi si cammina su
+     * marciapiedi, scorciatoie e sentieri non sempre mappati, quindi uno snap/
+     * reroute aggressivo darebbe falsi positivi continui. `null` = stesso valore
+     * di [offRouteThresholdMeters].
+     */
+    public val pedestrianOffRouteThresholdMeters: Double = 60.0,
 ) {
+    /** Soglia off-route effettiva per un dato [profile]. */
+    public fun offRouteThresholdFor(profile: com.enaide.sdk.model.TransportProfile): Double =
+        if (profile == com.enaide.sdk.model.TransportProfile.PEDESTRIAN)
+            pedestrianOffRouteThresholdMeters
+        else offRouteThresholdMeters
+
     public companion object {
         public const val DEFAULT_ROUTING_BASE_URL: String = "https://valhalla1.openstreetmap.de"
         public const val DEFAULT_NOMINATIM_BASE_URL: String = "https://nominatim.openstreetmap.org"

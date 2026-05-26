@@ -61,6 +61,10 @@ internal class EnaideNavigatorImpl(
         options: RouteOptions,
     ): RouteResult = withContext(Dispatchers.IO) {
         val effectiveProfile = profile ?: config.defaultProfile
+        // Memorizza profilo/opzioni così lo start successivo (e i reroute) usano la
+        // soglia off-route e il costing corretti per questo mezzo.
+        this@EnaideNavigatorImpl.profile = effectiveProfile
+        this@EnaideNavigatorImpl.options = options
         routingClient.computeRoute(waypoints, effectiveProfile, options)
     }
 
@@ -78,12 +82,12 @@ internal class EnaideNavigatorImpl(
         when (command) {
             is NavigationCommand.Start -> mutex.withLock {
                 rememberPlanFrom(command.route)
-                controller.start(command.route)
+                controller.start(command.route, profile)
             }
 
             is NavigationCommand.ReplaceRoute -> mutex.withLock {
                 rememberPlanFrom(command.route)
-                controller.start(command.route)
+                controller.start(command.route, profile)
             }
 
             is NavigationCommand.UpdateLocation -> mutex.withLock {
@@ -129,7 +133,7 @@ internal class EnaideNavigatorImpl(
             when (result) {
                 is RouteResult.Success -> {
                     rememberPlanFrom(result.route)
-                    controller.start(result.route)
+                    controller.start(result.route, profile)
                 }
                 is RouteResult.Failure -> {
                     controller.fail(NavigationError.RoutingFailed(result.error.toString()))

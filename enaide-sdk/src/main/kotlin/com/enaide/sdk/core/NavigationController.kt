@@ -42,17 +42,20 @@ internal class NavigationController(private val config: EnaideConfig) {
     val events: SharedFlow<NavigationEvent> = _events.asSharedFlow()
 
     private var activeRoute: Route? = null
+    private var activeProfile: com.enaide.sdk.model.TransportProfile = com.enaide.sdk.model.TransportProfile.AUTO
     private var snapper: LocationSnapper? = null
     private var deviationDetector: DeviationDetector? = null
     private var instructionTrigger: InstructionTrigger? = null
     private var lastFixTimestamp: Long = 0L
     private var lastStepIndex: Int = -1
 
-    fun start(route: Route) {
+    fun start(route: Route, profile: com.enaide.sdk.model.TransportProfile = com.enaide.sdk.model.TransportProfile.AUTO) {
         activeRoute = route
+        activeProfile = profile
         snapper = LocationSnapper(route)
         deviationDetector = DeviationDetector(
-            thresholdMeters = config.offRouteThresholdMeters,
+            // Soglia calibrata sul profilo: più larga a piedi (vedi EnaideConfig).
+            thresholdMeters = config.offRouteThresholdFor(profile),
             confirmationCount = config.offRouteConfirmationCount,
         )
         instructionTrigger = InstructionTrigger()
@@ -220,7 +223,7 @@ internal class NavigationController(private val config: EnaideConfig) {
             ),
             currentVisualInstruction = visual,
             pendingSpokenInstruction = pendingSpoken,
-            deviation = if (snap.distanceFromRouteMeters > config.offRouteThresholdMeters)
+            deviation = if (snap.distanceFromRouteMeters > config.offRouteThresholdFor(activeProfile))
                 Deviation.OffRoute(snap.distanceFromRouteMeters) else Deviation.OnRoute,
         )
         return ControllerOutcome.ProgressUpdated(pendingSpoken)

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,16 +33,27 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Attractions
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.EvStation
+import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.LocalAtm
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.LocalParking
+import androidx.compose.material.icons.filled.LocalPharmacy
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Wc
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -273,9 +285,11 @@ private fun MapScreen(vm: NavViewModel) {
         ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.my_location)) }
 
         // In alto: search bar + sotto la riga delle categorie POI.
+        // statusBarsPadding: la mappa va sotto la status bar (edge-to-edge), ma i
+        // controlli restano sotto l'orologio/notifiche.
         var expanded by remember { mutableStateOf(false) }
         Column(
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             SearchBar(
@@ -490,7 +504,7 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
             threeD = true, cameraState = cameraState, modifier = Modifier.fillMaxSize())
 
         Column(
-            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).fillMaxWidth(),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -789,15 +803,32 @@ private fun PoiCategoryBar(
     androidx.compose.foundation.lazy.LazyRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp),
     ) {
         items(PoiCategory.entries) { cat ->
-            FilterChip(
+            // ElevatedFilterChip con icona: più leggibile e "pillola" stile Maps.
+            androidx.compose.material3.ElevatedFilterChip(
                 selected = selected == cat,
                 onClick = { onPick(cat) },
+                leadingIcon = { Icon(cat.icon(), contentDescription = null, Modifier.size(18.dp)) },
                 label = { Text(cat.label()) },
             )
         }
     }
+}
+
+private fun PoiCategory.icon(): ImageVector = when (this) {
+    PoiCategory.FUEL -> Icons.Filled.LocalGasStation
+    PoiCategory.CHARGING -> Icons.Filled.EvStation
+    PoiCategory.PARKING -> Icons.Filled.LocalParking
+    PoiCategory.FOOD -> Icons.Filled.Restaurant
+    PoiCategory.SUPERMARKET -> Icons.Filled.ShoppingCart
+    PoiCategory.ATM -> Icons.Filled.LocalAtm
+    PoiCategory.PHARMACY -> Icons.Filled.LocalPharmacy
+    PoiCategory.HOSPITAL -> Icons.Filled.LocalHospital
+    PoiCategory.HOTEL -> Icons.Filled.Hotel
+    PoiCategory.TOILETS -> Icons.Filled.Wc
+    PoiCategory.ATTRACTION -> Icons.Filled.Attractions
 }
 
 @Composable
