@@ -13,6 +13,10 @@ package com.enaide.sdk.model
  * @property distanceRemainingMeters totale residuo fino al termine.
  * @property durationRemainingSeconds ETA residuo in secondi (stima rolling).
  * @property snappedLocation posizione dell'utente "snappata" sulla geometria del percorso.
+ * @property snappedBearingDegrees direzione del segmento di strada su cui si è
+ *   snappati (gradi, 0 = nord). È il bearing da usare per orientare camera/freccia
+ *   in navigazione: stabile e allineato alla strada, a differenza del bearing GPS
+ *   grezzo che traballa a bassa velocità. `null` se non determinabile.
  */
 public data class RouteProgress(
     public val currentStepIndex: Int,
@@ -22,4 +26,5 @@ public data class RouteProgress(
     public val distanceRemainingMeters: Double,
     public val durationRemainingSeconds: Double,
     public val snappedLocation: GeoPoint,
+    public val snappedBearingDegrees: Double? = null,
 )

@@ -267,22 +267,18 @@ private fun setupLayers(style: Style, colors: EnaideColors) {
     )
 
     // Marker POI: pin a goccia stile mappa. Sorgente vuota all'inizio.
+    // NB: niente `textField` — lo style raster OSM non definisce `glyphs`, e un
+    // SymbolLayer con testo senza glyphs NON viene renderizzato affatto (icona
+    // inclusa). Mostriamo solo l'icona pin; l'etichetta appare al tap.
     style.addSource(GeoJsonSource(POI_SOURCE))
     style.addImage(POI_ICON, pinBitmap(AndroidColor.parseColor(colors.routeLineHex())))
     style.addLayer(
         SymbolLayer(POI_LAYER, POI_SOURCE).withProperties(
             PropertyFactory.iconImage(POI_ICON),
             PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
             PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM), // punta in basso
             PropertyFactory.iconSize(1.0f),
-            PropertyFactory.textField(get(POI_PROP_LABEL)),
-            PropertyFactory.textSize(11.0f),
-            PropertyFactory.textOffset(arrayOf(0.0f, 0.6f)),
-            PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
-            PropertyFactory.textOptional(true),
-            PropertyFactory.textHaloColor("#FFFFFF"),
-            PropertyFactory.textHaloWidth(1.5f),
-            PropertyFactory.textMaxWidth(8.0f),
         )
     )
 }

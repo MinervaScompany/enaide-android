@@ -133,6 +133,8 @@ internal class NavigationController(private val config: EnaideConfig) {
                 distanceRemainingMeters = remaining,
                 durationRemainingSeconds = durationRemaining,
                 snappedLocation = step.geometry.firstOrNull() ?: route.geometry.first(),
+                snappedBearingDegrees = step.geometry.takeIf { it.size >= 2 }
+                    ?.let { GeoUtils.bearingDegrees(it[0], it[1]) },
             ),
             currentVisualInstruction = step.visualInstructions.firstOrNull(),
             pendingSpokenInstruction = step.spokenInstructions.firstOrNull(),
@@ -210,6 +212,12 @@ internal class NavigationController(private val config: EnaideConfig) {
         }
         val visual = instructionTrigger.currentVisual(currentStep, distanceToEndOfStep)
 
+        // Bearing del segmento di strada su cui siamo snappati: stabile e allineato
+        // alla via, da preferire al bearing GPS grezzo per orientare la camera.
+        val seg = snap.segmentIndex
+        val roadBearing = if (seg in 0 until route.geometry.size - 1)
+            GeoUtils.bearingDegrees(route.geometry[seg], route.geometry[seg + 1]) else null
+
         _state.value = NavigationState.Navigating(
             route = route,
             progress = RouteProgress(
@@ -220,6 +228,7 @@ internal class NavigationController(private val config: EnaideConfig) {
                 distanceRemainingMeters = snap.distanceRemainingMeters,
                 durationRemainingSeconds = durationRemaining,
                 snappedLocation = snap.snappedPoint,
+                snappedBearingDegrees = roadBearing,
             ),
             currentVisualInstruction = visual,
             pendingSpokenInstruction = pendingSpoken,

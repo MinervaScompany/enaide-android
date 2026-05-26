@@ -285,11 +285,15 @@ private fun MapScreen(vm: NavViewModel) {
         ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.my_location)) }
 
         // In alto: search bar + sotto la riga delle categorie POI.
-        // statusBarsPadding: la mappa va sotto la status bar (edge-to-edge), ma i
-        // controlli restano sotto l'orologio/notifiche.
+        // Quando la SearchBar è COLLASSATA la teniamo sotto la status bar; quando è
+        // ESPANSA va a tutto schermo (copre anche la barra notifiche), quindi niente
+        // padding superiore.
         var expanded by remember { mutableStateOf(false) }
         Column(
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .then(if (expanded) Modifier else Modifier.statusBarsPadding())
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             SearchBar(
@@ -495,9 +499,12 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
     val route = state.route
     val step = route.steps.getOrNull(progress.currentStepIndex)
     val nextStep = route.steps.getOrNull(progress.currentStepIndex + 1) ?: step
-    val bearing by vm.currentBearing.collectAsState()
+    val gpsBearing by vm.currentBearing.collectAsState()
     val speedMps by vm.currentSpeedMps.collectAsState()
     val cameraState = remember { MapCameraState() }
+    // In navigazione preferiamo il bearing della STRADA (snappato, stabile);
+    // fallback su GPS/bussola se non determinabile.
+    val bearing = progress.snappedBearingDegrees ?: gpsBearing
 
     Box(Modifier.fillMaxSize()) {
         RouteMap(route = route, position = progress.snappedLocation, bearing = bearing,
