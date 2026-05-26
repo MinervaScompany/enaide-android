@@ -195,15 +195,19 @@ fun RouteMap(
                 if (id != null) { holder.onMarkerClick?.invoke(id); true } else false
             }
         }
-        cameraState?.onRecenter = {
-            val map = holder.map
-            val pos = position
-            if (map != null && pos != null) animateDriveCamera(map, pos, bearing, threeD)
-        }
         onDispose {
             cameraState?.onRecenter = null
             // start/stop/pause/resume li gestisce il LifecycleObserver; qui solo destroy.
             mapView.onDestroy()
+        }
+    }
+
+    // onRecenter aggiornato a ogni recompose: ricentra sulla posizione CORRENTE
+    // (l'indicatore utente), non su quella catturata alla prima composizione.
+    androidx.compose.runtime.SideEffect {
+        cameraState?.onRecenter = {
+            val map = holder.map
+            if (map != null && position != null) animateDriveCamera(map, position, bearing, threeD)
         }
     }
 

@@ -412,10 +412,13 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         // GPS → avvia la sorgente live (il primo fix la aggiornerà);
         // Simulato → ferma il GPS e tiene l'ultima posizione (o l'origine manuale).
         when (mode) {
-            LocationMode.GPS -> startLiveLocation()
+            LocationMode.GPS -> startLiveLocation() // il primo fix sposterà l'indicatore
             LocationMode.SIMULATED, LocationMode.MANUAL -> {
                 stopLiveLocation()
-                _customOrigin.value?.let { _currentPosition.value = it.point }
+                // L'indicatore si riposiziona sul punto di partenza simulato
+                // (origine manuale scelta, o default Zurigo).
+                _currentPosition.value = _customOrigin.value?.point ?: DEFAULT_ORIGIN
+                _currentBearing.value = null
             }
         }
     }
