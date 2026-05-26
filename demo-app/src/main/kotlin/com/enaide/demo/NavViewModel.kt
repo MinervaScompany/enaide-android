@@ -426,6 +426,22 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
      * essere gia' concesso); con [LocationMode.SIMULATED] usa il simulatore.
      */
     init {
+        // Tiene aggiornata la notifica del foreground service con la prossima
+        // manovra + distanza residua, finché siamo in navigazione.
+        viewModelScope.launch {
+            navState.collect { st ->
+                if (st is NavigationState.Navigating) {
+                    val p = st.progress
+                    val next = st.route.steps.getOrNull(p.currentStepIndex + 1)
+                        ?: st.route.steps.getOrNull(p.currentStepIndex)
+                    val maneuver = next?.maneuver?.let { ManeuverText.phrase(getApplication(), it, next.roadName) }
+                        ?: getApplication<Application>().getString(R.string.proceed)
+                    val dist = com.enaide.sdk.format.UnitFormatter.formatDistance(p.distanceToNextManeuverMeters)
+                    NavNotificationState.update(title = "$dist · $maneuver",
+                        text = com.enaide.sdk.format.UnitFormatter.formatDuration(p.durationRemainingSeconds))
+                }
+            }
+        }
         // Reroute event-centric col simulatore: quando l'SDK emette un nuovo
         // Started (dopo un ricalcolo) mentre stiamo guidando in simulazione, si
         // riaggancia la sorgente al NUOVO percorso (senza ripetere l'errore).
@@ -450,6 +466,8 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         _tab.value = AppTab.NAV
         // Persisti il viaggio per poterlo recuperare dopo un kill/crash.
         tripStore.save(_tripPlan.value, _vehicleKind.value)
+        // Avvia il foreground service: la navigazione continua in background.
+        NavigationService.start(getApplication())
 
         locationJob?.cancel()
         // In MANUAL (GPS-less) non c'è sorgente: si avanza con advanceStep().
@@ -634,6 +652,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         locationJob?.cancel()
         locationJob = null
         navigator.stop()
+        NavigationService.stop(getApplication())
         tripStore.clear() // viaggio terminato: niente da recuperare
         _currentSpeedMps.value = 0.0
         _screen.value = Screen.Map

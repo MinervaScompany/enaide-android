@@ -2,6 +2,7 @@ package com.enaide.demo
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -135,6 +136,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         voice = VoiceGuidance(this)
+        // Permesso notifiche (API 33+): serve a mostrare la notifica del foreground
+        // service di navigazione. Non bloccante: il service parte comunque.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+                .launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             EnaideTheme {
                 val vm: NavViewModel = viewModel()
