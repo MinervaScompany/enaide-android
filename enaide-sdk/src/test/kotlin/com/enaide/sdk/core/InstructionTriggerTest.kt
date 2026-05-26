@@ -82,4 +82,38 @@ class InstructionTriggerTest {
         val again = trigger.consumePendingSpoken(0, step(), 750.0)
         assertNotNull(again)
     }
+
+    /** Step corto (200m) senza soglie esplicite lontane: i trigger a tempo devono coprire. */
+    private fun shortStep(): RouteStep = step().copy(
+        distanceMeters = 200.0,
+        spokenInstructions = listOf(
+            SpokenInstruction(text = "Svolta a sinistra", triggerDistanceBeforeManeuverMeters = 100.0),
+        ),
+    )
+
+    @Test
+    fun `time-based alert fires far when moving fast`() {
+        val trigger = InstructionTrigger()
+        // 30 m/s (~108 km/h): alert ~45s prima = ~1350m. A 1000m deve già scattare.
+        val r = trigger.consumePendingSpoken(0, shortStep(), distanceToManeuverMeters = 1000.0, speedMps = 30.0)
+        assertNotNull(r)
+        assertEquals("Svolta a sinistra", r?.text)
+    }
+
+    @Test
+    fun `no time-based trigger when stationary`() {
+        val trigger = InstructionTrigger()
+        // velocità ~0: niente trigger a tempo, e 1000m è oltre la soglia in metri (100m).
+        val r = trigger.consumePendingSpoken(0, shortStep(), distanceToManeuverMeters = 1000.0, speedMps = 0.0)
+        assertNull(r)
+    }
+
+    @Test
+    fun `time-based trigger does not repeat the same announcement`() {
+        val trigger = InstructionTrigger()
+        val first = trigger.consumePendingSpoken(0, shortStep(), 1000.0, speedMps = 30.0)
+        val second = trigger.consumePendingSpoken(0, shortStep(), 900.0, speedMps = 30.0)
+        assertNotNull(first)
+        assertNull(second)
+    }
 }
