@@ -35,6 +35,13 @@ public sealed class NavigationCommand {
     public data class UpdateLocation(public val location: UserLocation) : NavigationCommand()
 
     /**
+     * Avanza **manualmente** allo step successivo, senza GPS (navigazione
+     * "GPS-less": l'utente conferma di aver raggiunto la prossima manovra, tipico
+     * a piedi). All'ultimo step dichiara l'arrivo.
+     */
+    public data object AdvanceStep : NavigationCommand()
+
+    /**
      * Ricalcola il percorso dalla posizione corrente verso la destinazione
      * attuale, mantenendo profilo e opzioni. Tipico in reazione a una deviazione.
      */

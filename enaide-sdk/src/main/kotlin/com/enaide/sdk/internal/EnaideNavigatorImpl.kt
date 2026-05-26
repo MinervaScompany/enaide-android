@@ -92,6 +92,8 @@ internal class EnaideNavigatorImpl(
 
             NavigationCommand.Stop -> mutex.withLock { controller.stop() }
 
+            NavigationCommand.AdvanceStep -> mutex.withLock { controller.advanceStepManually() }
+
             NavigationCommand.Recalculate ->
                 recalculate(waypoints)
 

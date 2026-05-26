@@ -68,6 +68,9 @@
     <string name="settings_server">Server (read-only)</string>
     <string name="gps_real">Real GPS</string>
     <string name="simulated">Simulated</string>
+    <string name="manual_mode">Manual (walking)</string>
+    <string name="next_step">Next step</string>
+    <string name="skip_stop">Skip stop</string>
     <string name="simulate_error">Simulate error (test reroute)</string>
     <string name="origin_label">Starting point</string>
     <string name="origin_search">Search a starting point</string>

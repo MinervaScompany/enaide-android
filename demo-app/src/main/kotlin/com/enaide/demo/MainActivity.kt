@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,6 +57,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
@@ -112,6 +114,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var voice: VoiceGuidance
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Edge-to-edge: l'app disegna fino ai bordi (anche dietro la barra di
+        // sistema in fondo). Lo Scaffold/NavigationBar gestiscono gli insets.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         voice = VoiceGuidance(this)
         setContent {
@@ -516,6 +521,20 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
                     Text(stringResource(R.string.off_route, UnitFormatter.formatDistance(off.distanceFromRouteMeters)),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
+                // Modalità manuale (GPS-less): l'utente avanza a mano allo step successivo.
+                if (vm.isManualMode) {
+                    Button(onClick = { vm.advanceStep() }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Filled.Navigation, contentDescription = null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.next_step))
+                    }
+                }
+                // Viaggio multitappa: salta la prossima tappa intermedia.
+                if (vm.hasIntermediateStops) {
+                    OutlinedButton(onClick = { vm.skipNextStop() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.skip_stop))
+                    }
+                }
                 FilledTonalButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -628,14 +647,20 @@ private fun SettingsScreen(vm: NavViewModel) {
                 )
                 FilterChip(
                     selected = mode == LocationMode.SIMULATED,
-                    onClick = { vm.setLocationMode(LocationMode.SIMULATED); vm.stopLiveLocation() },
+                    onClick = { vm.setLocationMode(LocationMode.SIMULATED) },
                     label = { Text(stringResource(R.string.simulated)) },
+                )
+                FilterChip(
+                    selected = mode == LocationMode.MANUAL,
+                    onClick = { vm.setLocationMode(LocationMode.MANUAL) },
+                    label = { Text(stringResource(R.string.manual_mode)) },
                 )
             }
             if (mode == LocationMode.SIMULATED) {
                 SettingRow(stringResource(R.string.simulate_error), wrongTurn) { vm.setSimulateWrongTurn(it) }
-                OriginPicker(vm)
             }
+            // L'origine manuale è impostabile fuori dal GPS reale (simulato o manuale).
+            if (mode != LocationMode.GPS) OriginPicker(vm)
         }
 
         // Voce

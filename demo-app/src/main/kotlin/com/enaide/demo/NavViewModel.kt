@@ -54,8 +54,13 @@ internal sealed interface Screen {
     ) : Screen
 }
 
-/** Sorgente dei fix di posizione durante la guida. */
-internal enum class LocationMode { GPS, SIMULATED }
+/**
+ * Sorgente di avanzamento durante la guida.
+ * - [GPS]: fix reali dal device.
+ * - [SIMULATED]: simulatore con fisica.
+ * - [MANUAL]: nessun GPS; l'utente avanza a mano allo step successivo (a piedi).
+ */
+internal enum class LocationMode { GPS, SIMULATED, MANUAL }
 
 /** Tab della bottom bar. NAV appare solo quando la navigazione è attiva. */
 internal enum class AppTab { MAP, NAV, SETTINGS }
@@ -83,6 +88,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val geocoder = NominatimGeocodingClient(config)
     private val poiProvider = OverpassPoiProvider(config)
     private val gpsSource = GpsLocationSource(app)
+    private val compass = CompassSource(app)
 
     /** Stato live della navigazione esposto dall'SDK. */
     val navState: StateFlow<NavigationState> = navigator.state
@@ -245,13 +251,23 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         recomputePlan()
     }
 
-    /** Aggiunge una tappa al piano (da ricerca/POI/long-press) e ricalcola. */
+    /**
+     * Aggiunge una tappa. Se siamo **in navigazione**, parte dal percorso attivo:
+     * inserisce il waypoint via comando event-centric (l'SDK ricalcola la
+     * navigazione in corso). Altrimenti modifica il piano in pianificazione.
+     */
     fun addStop(place: GeocodedPlace) {
+        _searchResults.value = emptyList()
+        if (navState.value is NavigationState.Navigating) {
+            // Tappa aggiunta al viaggio in corso: prima della destinazione, reroute live.
+            navigator.dispatch(com.enaide.sdk.model.NavigationCommand.AddWaypoint(place.point))
+            _tripPlan.value = _tripPlan.value.addStop(TripStop(place.point, place.displayName))
+            return
+        }
         val plan = _tripPlan.value
         _tripPlan.value = if (plan.isRoutable) {
             plan.addStop(TripStop(place.point, place.displayName))
         } else {
-            // Piano vuoto/incompleto: lo trattiamo come destinazione.
             if (plan.stops.isEmpty()) TripPlan.of(defaultOriginStop(), TripStop(place.point, place.displayName))
             else plan.withDestination(TripStop(place.point, place.displayName))
         }
@@ -348,9 +364,33 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val _currentPosition = MutableStateFlow<GeoPoint?>(DEFAULT_ORIGIN)
     val currentPosition: StateFlow<GeoPoint?> = _currentPosition.asStateFlow()
 
-    /** Direzione di moto corrente in gradi (per orientare la camera 3D); `null` se ignota. */
+    /**
+     * Direzione mostrata (camera/freccia). Combina, come i veri navigatori:
+     * - in **movimento** (>[COMPASS_SPEED_THRESHOLD]) usa il bearing GPS (stabile);
+     * - da **fermo/lento** usa la **bussola** del device (orientamento reale).
+     */
     private val _currentBearing = MutableStateFlow<Double?>(null)
     val currentBearing: StateFlow<Double?> = _currentBearing.asStateFlow()
+
+    private var gpsBearing: Double? = null
+    private var compassBearing: Double? = null
+    private var movingFast = false
+
+    init {
+        // La bussola alimenta il bearing quando non ci si muove abbastanza.
+        if (compass.isAvailable) viewModelScope.launch {
+            compass.asFlow().collect { az ->
+                compassBearing = az
+                if (!movingFast) _currentBearing.value = az
+            }
+        }
+    }
+
+    private fun updateBearingFromFix(courseDegrees: Double?, speedMps: Double) {
+        movingFast = speedMps >= COMPASS_SPEED_THRESHOLD
+        courseDegrees?.let { gpsBearing = it }
+        _currentBearing.value = if (movingFast) (gpsBearing ?: compassBearing) else (compassBearing ?: gpsBearing)
+    }
 
     /** Velocità corrente in m/s (dal fix di posizione); UnitFormatter la converte in km/h. */
     private val _currentSpeedMps = MutableStateFlow(0.0)
@@ -366,7 +406,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         // Simulato → ferma il GPS e tiene l'ultima posizione (o l'origine manuale).
         when (mode) {
             LocationMode.GPS -> startLiveLocation()
-            LocationMode.SIMULATED -> {
+            LocationMode.SIMULATED, LocationMode.MANUAL -> {
                 stopLiveLocation()
                 _customOrigin.value?.let { _currentPosition.value = it.point }
             }
@@ -403,6 +443,9 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         _tab.value = AppTab.NAV
 
         locationJob?.cancel()
+        // In MANUAL (GPS-less) non c'è sorgente: si avanza con advanceStep().
+        if (_locationMode.value == LocationMode.MANUAL) return
+
         locationJob = viewModelScope.launch {
             val flow = when (_locationMode.value) {
                 LocationMode.GPS -> gpsSource.asFlow()
@@ -411,8 +454,48 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                     cruiseKmh = cruiseKmhFor(_vehicleKind.value),
                     wrongTurn = if (_simulateWrongTurn.value) WrongTurn() else null,
                 ).asFlow()
+                LocationMode.MANUAL -> return@launch
             }
             flow.collect { fix -> pushFix(fix) }
+        }
+    }
+
+    /** True se la guida è in modalità manuale (GPS-less): mostra il bottone "prossimo step". */
+    val isManualMode: Boolean get() = _locationMode.value == LocationMode.MANUAL
+
+    /** Avanza manualmente allo step successivo (navigazione GPS-less). */
+    fun advanceStep() {
+        navigator.dispatch(com.enaide.sdk.model.NavigationCommand.AdvanceStep)
+    }
+
+    /** True se il viaggio ha tappe intermedie (mostra il bottone "salta tappa"). */
+    val hasIntermediateStops: Boolean get() = _tripPlan.value.intermediateStops.isNotEmpty()
+
+    /**
+     * Salta la prossima tappa intermedia di un viaggio multitappa: la rimuove dal
+     * piano e ricalcola la navigazione in corso verso la tappa successiva.
+     */
+    fun skipNextStop() {
+        val plan = _tripPlan.value
+        if (plan.intermediateStops.isEmpty()) return
+        // Rimuovi la prima tappa intermedia (indice 1, dopo l'origine).
+        val updated = plan.removeStop(1)
+        _tripPlan.value = updated
+        // Ricalcola dalla posizione corrente verso i waypoint rimasti e sostituisci.
+        viewModelScope.launch {
+            val origin = _currentPosition.value ?: updated.waypoints.first()
+            val rest = updated.waypoints.drop(1)
+            val vehicle = currentVehicleProfile()
+            val result = navigator.computeRoute(
+                waypoints = listOf(origin) + rest,
+                profile = vehicle.toProfile(),
+                options = vehicle.toRouteOptions(),
+            )
+            if (result is RouteResult.Success) {
+                navigator.dispatch(com.enaide.sdk.model.NavigationCommand.ReplaceRoute(result.route))
+            } else {
+                showError(str(R.string.err_route_failed, (result as RouteResult.Failure).error.toString()))
+            }
         }
     }
 
@@ -430,8 +513,8 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun pushFix(fix: com.enaide.sdk.model.UserLocation) {
         _currentPosition.value = fix.point
-        fix.courseDegrees?.let { _currentBearing.value = it }
         _currentSpeedMps.value = fix.speedMetersPerSecond ?: 0.0
+        updateBearingFromFix(fix.courseDegrees, fix.speedMetersPerSecond ?: 0.0)
         navigator.updateLocation(fix)
     }
 
@@ -454,7 +537,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 gpsSource.asFlow().collect { fix ->
                     _currentPosition.value = fix.point
-                    fix.courseDegrees?.let { _currentBearing.value = it }
+                    updateBearingFromFix(fix.courseDegrees, fix.speedMetersPerSecond ?: 0.0)
                 }
             }
         }
@@ -565,5 +648,8 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Debounce del ricalcolo percorso ad ogni modifica del piano. */
         const val ROUTE_DEBOUNCE_MS = 400L
+
+        /** Sopra questa velocità (m/s, ~3.6 km/h) si usa il bearing GPS; sotto, la bussola. */
+        const val COMPASS_SPEED_THRESHOLD = 1.0
     }
 }

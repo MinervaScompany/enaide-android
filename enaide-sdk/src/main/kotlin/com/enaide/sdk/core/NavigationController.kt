@@ -93,6 +93,49 @@ internal class NavigationController(private val config: EnaideConfig) {
         _state.value = NavigationState.Rerouting(previousRoute = route, triggeredAt = at)
     }
 
+    /**
+     * Avanzamento **manuale** allo step successivo, senza GPS (navigazione
+     * "GPS-less", utile a piedi: l'utente conferma di aver raggiunto la prossima
+     * manovra). Posiziona il puntatore all'inizio dello step successivo, aggiorna
+     * progresso ed eventi. All'ultimo step dichiara l'arrivo.
+     */
+    fun advanceStepManually() {
+        val route = activeRoute ?: return
+        val current = (_state.value as? NavigationState.Navigating)?.progress?.currentStepIndex ?: return
+        val next = current + 1
+
+        if (next > route.steps.lastIndex) {
+            _state.value = NavigationState.Arrived(route)
+            _events.tryEmit(NavigationEvent.Arrived(route))
+            return
+        }
+
+        lastStepIndex = next
+        val step = route.steps[next]
+        // Distanza cumulata fino all'INIZIO dello step `next`.
+        var traveled = 0.0
+        for (i in 0 until next) traveled += route.steps[i].distanceMeters
+        val remaining = (route.distanceMeters - traveled).coerceAtLeast(0.0)
+        val durationRemaining = if (route.distanceMeters > 0)
+            route.durationSeconds * (remaining / route.distanceMeters) else 0.0
+
+        _events.tryEmit(NavigationEvent.StepAdvanced(next, step))
+        _state.value = NavigationState.Navigating(
+            route = route,
+            progress = RouteProgress(
+                currentStepIndex = next,
+                distanceAlongStepMeters = 0.0,
+                distanceToNextManeuverMeters = step.distanceMeters,
+                distanceTraveledMeters = traveled,
+                distanceRemainingMeters = remaining,
+                durationRemainingSeconds = durationRemaining,
+                snappedLocation = step.geometry.firstOrNull() ?: route.geometry.first(),
+            ),
+            currentVisualInstruction = step.visualInstructions.firstOrNull(),
+            pendingSpokenInstruction = step.spokenInstructions.firstOrNull(),
+        )
+    }
+
     /** Termina con errore non recuperabile. */
     fun fail(reason: com.enaide.sdk.model.NavigationError) {
         activeRoute = null
