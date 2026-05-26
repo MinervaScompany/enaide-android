@@ -19,6 +19,8 @@ public data class RouteStep(
     public val roadName: String? = null,
     public val visualInstructions: List<VisualInstruction> = emptyList(),
     public val spokenInstructions: List<SpokenInstruction> = emptyList(),
+    /** Limite di velocità in km/h sullo step, se noto (da Valhalla trace_attributes). `null` = ignoto. */
+    public val speedLimitKmh: Int? = null,
 )
 
 /**

@@ -108,3 +108,18 @@ internal data class ValhallaManeuver(
     @SerialName("bearing_before") val bearingBefore: Double? = null,
     @SerialName("bearing_after") val bearingAfter: Double? = null,
 )
+
+// =============================================================================
+// trace_attributes (limiti di velocità per edge)
+// =============================================================================
+
+@Serializable
+internal data class TraceAttributesResponse(
+    val edges: List<TraceEdge> = emptyList(),
+)
+
+@Serializable
+internal data class TraceEdge(
+    @SerialName("speed_limit") val speedLimit: Int? = null,
+    val names: List<String>? = null,
+)

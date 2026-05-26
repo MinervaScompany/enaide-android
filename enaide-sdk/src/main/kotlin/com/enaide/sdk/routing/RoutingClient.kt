@@ -24,6 +24,13 @@ public interface RoutingClient {
         profile: TransportProfile,
         options: RouteOptions = RouteOptions.Default,
     ): RouteResult
+
+    /**
+     * Arricchisce [route] con i limiti di velocità per step (`RouteStep.speedLimitKmh`),
+     * quando il backend li espone. Operazione di rete **separata e opzionale**: il
+     * routing base resta veloce. Default: ritorna il route invariato.
+     */
+    public suspend fun enrichWithSpeedLimits(route: Route, profile: TransportProfile): Route = route
 }
 
 /**

@@ -68,6 +68,10 @@ internal class EnaideNavigatorImpl(
         routingClient.computeRoute(waypoints, effectiveProfile, options)
     }
 
+    override suspend fun fetchSpeedLimits(route: Route): Route = withContext(Dispatchers.IO) {
+        routingClient.enrichWithSpeedLimits(route, profile)
+    }
+
     override fun dispatch(command: NavigationCommand) {
         scope.launch { handle(command) }
     }

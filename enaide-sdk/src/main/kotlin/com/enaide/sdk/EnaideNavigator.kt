@@ -75,6 +75,13 @@ public interface EnaideNavigator {
      * route già attivo. Se è già in corso un'altra navigazione, viene sostituita.
      * Equivale a `dispatch(NavigationCommand.Start(route))`.
      */
+    /**
+     * Arricchisce [route] con i limiti di velocità per step (operazione di rete
+     * opzionale; ritorna il route invariato se non disponibili). Usa il profilo
+     * di default o quello dell'ultimo [computeRoute].
+     */
+    public suspend fun fetchSpeedLimits(route: Route): Route
+
     public fun start(route: Route)
 
     /** Spinge un fix di posizione. Equivale a `dispatch(NavigationCommand.UpdateLocation(...))`. */

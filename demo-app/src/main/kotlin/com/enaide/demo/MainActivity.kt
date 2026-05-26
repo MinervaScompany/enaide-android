@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -87,6 +89,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -525,6 +528,14 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
             }
         }
 
+        // Cartello limite velocità (se noto per lo step corrente).
+        step?.speedLimitKmh?.let { limit ->
+            SpeedLimitSign(
+                limit,
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp, bottom = 160.dp),
+            )
+        }
+
         FloatingActionButton(
             onClick = { cameraState.recenter() },
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 160.dp),
@@ -852,6 +863,21 @@ private fun PoiCategory.label(): String = stringResource(when (this) {
     PoiCategory.TOILETS -> R.string.poi_toilets
     PoiCategory.ATTRACTION -> R.string.poi_attraction
 })
+
+/** Cartello limite velocità stile europeo: cerchio bianco, bordo rosso, numero nero. */
+@Composable
+private fun SpeedLimitSign(limitKmh: Int, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .background(Color.White, CircleShape)
+            .border(width = 5.dp, color = Color(0xFFE53935), shape = CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("$limitKmh", color = Color.Black, fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium)
+    }
+}
 
 @Composable
 private fun Metric(value: String, label: String) {

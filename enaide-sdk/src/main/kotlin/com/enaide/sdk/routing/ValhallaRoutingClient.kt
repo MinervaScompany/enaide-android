@@ -156,6 +156,53 @@ public class ValhallaRoutingClient(
         }
     }
 
+    override suspend fun enrichWithSpeedLimits(route: com.enaide.sdk.model.Route, profile: TransportProfile): com.enaide.sdk.model.Route {
+        if (route.geometry.size < 2) return route
+        val request = buildJsonObject {
+            put("shape", kotlinx.serialization.json.buildJsonArray {
+                route.geometry.forEach { p ->
+                    add(buildJsonObject { put("lat", p.latitude); put("lon", p.longitude) })
+                }
+            })
+            put("costing", profile.valhallaCosting)
+            put("shape_match", "map_snap")
+            put("filters", buildJsonObject {
+                put("attributes", kotlinx.serialization.json.buildJsonArray {
+                    add(kotlinx.serialization.json.JsonPrimitive("edge.speed_limit"))
+                    add(kotlinx.serialization.json.JsonPrimitive("edge.names"))
+                })
+                put("action", "include")
+            })
+        }
+
+        val parsed: TraceAttributesResponse = try {
+            val resp = client.post {
+                url { takeFrom(config.routingBaseUrl); appendPathSegments("trace_attributes") }
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            if (!resp.status.isSuccess()) return route
+            resp.body()
+        } catch (t: Throwable) {
+            return route // best-effort: in caso di errore lasciamo il route invariato
+        }
+
+        // Mappa nome-strada -> limite (km/h). Gli edge senza limite o senza nome si saltano.
+        val limitByName = HashMap<String, Int>()
+        for (e in parsed.edges) {
+            val lim = e.speedLimit ?: continue
+            if (lim <= 0) continue
+            e.names?.forEach { n -> limitByName.putIfAbsent(n, lim) }
+        }
+        if (limitByName.isEmpty()) return route
+
+        val steps = route.steps.map { step ->
+            val lim = step.roadName?.let { limitByName[it] }
+            if (lim != null) step.copy(speedLimitKmh = lim) else step
+        }
+        return route.copy(steps = steps)
+    }
+
     override fun close() {
         client.close()
     }

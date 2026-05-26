@@ -311,9 +311,12 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                 options = vehicle.toRouteOptions(),
             )) {
                 is RouteResult.Success -> {
-                    _previewRoute.value = result.route
+                    // Arricchisce con i limiti di velocità (best-effort, non blocca).
+                    val enriched = runCatching { navigator.fetchSpeedLimits(result.route) }
+                        .getOrDefault(result.route)
+                    _previewRoute.value = enriched
                     _screen.value = Screen.Preview(
-                        route = result.route,
+                        route = enriched,
                         originLabel = plan.origin?.label ?: "",
                         destinationLabel = plan.destination?.label ?: "",
                     )
