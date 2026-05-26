@@ -38,6 +38,8 @@ import org.maplibre.geojson.Point
 private const val ROUTE_SOURCE = "route-source"
 private const val ROUTE_CASING_LAYER = "route-casing"
 private const val ROUTE_LAYER = "route-layer"
+private const val ROUTE_ARROW_LAYER = "route-arrows"
+private const val ROUTE_ARROW_ICON = "route-arrow"
 private const val POSITION_SOURCE = "position-source"
 private const val POSITION_LAYER = "position-layer"
 private const val POSITION_HALO_LAYER = "position-halo"
@@ -316,6 +318,19 @@ private fun setupLayers(style: Style, colors: EnaideColors) {
             PropertyFactory.lineJoin("round"),
         )
     )
+    // Frecce di direzione ripetute LUNGO la linea del percorso (verso di marcia).
+    style.addImage(ROUTE_ARROW_ICON, chevronBitmap())
+    style.addLayer(
+        SymbolLayer(ROUTE_ARROW_LAYER, ROUTE_SOURCE).withProperties(
+            PropertyFactory.symbolPlacement(Property.SYMBOL_PLACEMENT_LINE),
+            PropertyFactory.symbolSpacing(60.0f),         // distanza tra le frecce
+            PropertyFactory.iconImage(ROUTE_ARROW_ICON),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+            PropertyFactory.iconSize(0.6f),
+        )
+    )
 
     // Marker posizione: alone + freccia direzionale.
     style.addSource(GeoJsonSource(POSITION_SOURCE))
@@ -411,6 +426,21 @@ private fun setMarkers(style: Style, markers: List<MapMarker>) {
 }
 
 /** Freccia/chevron nera puntata verso l'alto (0° = nord), disegnata a runtime. */
+/** Chevron bianco "›" (punta verso destra = verso di marcia lungo la linea). */
+private fun chevronBitmap(): Bitmap {
+    val s = 36
+    val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE; style = Paint.Style.STROKE; strokeWidth = 6f
+        strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+    }
+    // ">" puntato a destra (l'asse X della freccia segue la direzione della linea).
+    canvas.drawLine(s * 0.35f, s * 0.25f, s * 0.7f, s * 0.5f, paint)
+    canvas.drawLine(s * 0.7f, s * 0.5f, s * 0.35f, s * 0.75f, paint)
+    return bmp
+}
+
 private fun arrowBitmap(): Bitmap {
     val size = 72
     val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
