@@ -62,6 +62,23 @@ public data class MapMarker(
     public val label: String,
 )
 
+/**
+ * Stili mappa disponibili (URI MapLibre Style Spec). Personalizzabili: passa un
+ * qualsiasi `styleUri` a [RouteMap] (un altro style OSM, MapTiler, self-hosted...).
+ *
+ * - [RASTER_OSM]: tile raster OSM in bundle (offline-friendly, niente label).
+ * - [VECTOR_LIBERTY]/[VECTOR_BRIGHT]/[VECTOR_DARK]: vector tiles OpenFreeMap (OSM,
+ *   gratuiti, senza API key) — con label di strade/POI, sprite, glyphs. Online.
+ *   Liberty include il layer `building-3d`: in modalità guida (camera inclinata)
+ *   gli edifici appaiono estrusi in 3D automaticamente.
+ */
+public object MapStyles {
+    public const val RASTER_OSM: String = "asset://osm_raster_style.json"
+    public const val VECTOR_LIBERTY: String = "https://tiles.openfreemap.org/styles/liberty"
+    public const val VECTOR_BRIGHT: String = "https://tiles.openfreemap.org/styles/bright"
+    public const val VECTOR_DARK: String = "https://tiles.openfreemap.org/styles/dark"
+}
+
 /** Zoom e tilt della camera in modalità guida 3D. */
 private const val DRIVE_ZOOM = 17.5
 private const val DRIVE_TILT = 55.0 // gradi di inclinazione (0 = dall'alto, 60 = molto prospettico)
@@ -110,6 +127,7 @@ fun RouteMap(
     onLongPress: ((GeoPoint) -> Unit)? = null,
     markers: List<MapMarker> = emptyList(),
     onMarkerClick: ((String) -> Unit)? = null,
+    styleUri: String = MapStyles.RASTER_OSM,
 ) {
     val context = LocalContext.current
     remember { MapLibre.getInstance(context) }
@@ -148,7 +166,7 @@ fun RouteMap(
         mapView.onCreate(null)
         mapView.getMapAsync { map ->
             holder.map = map
-            map.setStyle(Style.Builder().fromUri("asset://osm_raster_style.json")) { style ->
+            map.setStyle(Style.Builder().fromUri(styleUri)) { style ->
                 setupLayers(style, colors)
                 holder.styleReady = true
                 styleReady = true // trigger Compose per marker/camera coi valori correnti

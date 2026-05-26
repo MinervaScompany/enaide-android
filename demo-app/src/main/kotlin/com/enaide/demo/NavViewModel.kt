@@ -138,6 +138,11 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     val voiceEnabled: StateFlow<Boolean> = _voiceEnabled.asStateFlow()
     fun setVoiceEnabled(on: Boolean) { _voiceEnabled.value = on }
 
+    /** Stile mappa scelto (raster offline o vettoriale OSM). */
+    private val _mapStyle = MutableStateFlow(com.enaide.sdk.map.MapStyles.VECTOR_LIBERTY)
+    val mapStyle: StateFlow<String> = _mapStyle.asStateFlow()
+    fun setMapStyle(uri: String) { _mapStyle.value = uri }
+
     /** Endpoint configurati (sola lettura nella demo: cambiarli richiede riavvio). */
     val routingEndpoint: String get() = config.routingBaseUrl
     val geocodingEndpoint: String get() = config.nominatimBaseUrl

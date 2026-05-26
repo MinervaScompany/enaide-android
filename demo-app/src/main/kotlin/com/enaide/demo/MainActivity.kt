@@ -300,6 +300,7 @@ private fun MapScreen(vm: NavViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         // Mappa edge-to-edge. route = il tragitto attivo se in navigazione.
+        val mapStyle by vm.mapStyle.collectAsState()
         RouteMap(
             route = activeRoute,
             position = position,
@@ -309,6 +310,7 @@ private fun MapScreen(vm: NavViewModel) {
             onLongPress = { vm.selectPointOnMap(it) },
             markers = markers,
             onMarkerClick = { vm.navigateToPoi(it) },
+            styleUri = mapStyle,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -404,7 +406,8 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
     var addExpanded by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
-        RouteMap(route = route, position = null, cameraState = cameraState, modifier = Modifier.fillMaxSize())
+        val mapStyle by vm.mapStyle.collectAsState()
+        RouteMap(route = route, position = null, cameraState = cameraState, styleUri = mapStyle, modifier = Modifier.fillMaxSize())
 
         FloatingActionButton(
             onClick = { vm.clearPlan(); vm.backToMap() },
@@ -540,8 +543,9 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
     val bearing = progress.snappedBearingDegrees ?: gpsBearing
 
     Box(Modifier.fillMaxSize()) {
+        val mapStyle by vm.mapStyle.collectAsState()
         RouteMap(route = route, position = progress.snappedLocation, bearing = bearing,
-            threeD = true, cameraState = cameraState, modifier = Modifier.fillMaxSize())
+            threeD = true, cameraState = cameraState, styleUri = mapStyle, modifier = Modifier.fillMaxSize())
 
         Column(
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp).fillMaxWidth(),
@@ -728,6 +732,28 @@ private fun SettingsScreen(vm: NavViewModel) {
             }
             // L'origine manuale è impostabile fuori dal GPS reale (simulato o manuale).
             if (mode != LocationMode.GPS) OriginPicker(vm)
+        }
+
+        // Stile mappa
+        val mapStyle by vm.mapStyle.collectAsState()
+        SettingsSection(stringResource(R.string.settings_map)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = mapStyle == com.enaide.sdk.map.MapStyles.VECTOR_LIBERTY,
+                    onClick = { vm.setMapStyle(com.enaide.sdk.map.MapStyles.VECTOR_LIBERTY) },
+                    label = { Text(stringResource(R.string.map_vector_light)) },
+                )
+                FilterChip(
+                    selected = mapStyle == com.enaide.sdk.map.MapStyles.VECTOR_DARK,
+                    onClick = { vm.setMapStyle(com.enaide.sdk.map.MapStyles.VECTOR_DARK) },
+                    label = { Text(stringResource(R.string.map_vector_dark)) },
+                )
+                FilterChip(
+                    selected = mapStyle == com.enaide.sdk.map.MapStyles.RASTER_OSM,
+                    onClick = { vm.setMapStyle(com.enaide.sdk.map.MapStyles.RASTER_OSM) },
+                    label = { Text(stringResource(R.string.map_raster)) },
+                )
+            }
         }
 
         // Voce
