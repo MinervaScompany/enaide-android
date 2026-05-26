@@ -32,6 +32,13 @@ SDK di navigazione Android (Kotlin) + demo app. Documentazione completa in `DOCS
   default, niente Surface/forme custom che li storpiano — così il porting iOS
   con SwiftUI nativo è speculare.
 
+- **Stile Kotlin: elegante, tipizzato, senza cast.** Niente cast forzati `as`
+  nel codice di produzione: usare `when` esaustivo sulle sealed class, `as?` +
+  `?.let`, smart-cast. API pubbliche con tipi espliciti (l'SDK ha
+  `explicitApi()`). Preferire dati immutabili (`data class`, `val`) e funzioni
+  pure. Stesso rigore nei commenti/KDoc. (Eccezioni inevitabili: `getSystemService(...) as X`
+  dell'API Android; cast negli unit test dove vogliamo il fail-fast.)
+
 - **Niente dipendenze occulte.** Solo HTTP standard verso OSM/Valhalla/Nominatim/
   Overpass. Nessun Google Play Services / Apple Maps / CLGeocoder.
 

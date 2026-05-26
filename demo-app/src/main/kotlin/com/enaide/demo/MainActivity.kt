@@ -556,8 +556,7 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
                     Metric(UnitFormatter.formatDistance(progress.distanceRemainingMeters), stringResource(R.string.metric_remaining))
                     Metric(UnitFormatter.formatSpeedKmh(speedMps), stringResource(R.string.metric_current_speed))
                 }
-                if (state.deviation is Deviation.OffRoute) {
-                    val off = state.deviation as Deviation.OffRoute
+                (state.deviation as? Deviation.OffRoute)?.let { off ->
                     Text(stringResource(R.string.off_route, UnitFormatter.formatDistance(off.distanceFromRouteMeters)),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
