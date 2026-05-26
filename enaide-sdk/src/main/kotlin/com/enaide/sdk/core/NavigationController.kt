@@ -48,6 +48,8 @@ internal class NavigationController(private val config: EnaideConfig) {
     private var instructionTrigger: InstructionTrigger? = null
     private var lastFixTimestamp: Long = 0L
     private var lastStepIndex: Int = -1
+    /** Velocità media mobile osservata (m/s), per un ETA basato sul ritmo reale. */
+    private var smoothedSpeedMps: Double = 0.0
 
     fun start(route: Route, profile: com.enaide.sdk.model.TransportProfile = com.enaide.sdk.model.TransportProfile.AUTO) {
         activeRoute = route
@@ -60,6 +62,7 @@ internal class NavigationController(private val config: EnaideConfig) {
         )
         instructionTrigger = InstructionTrigger()
         lastStepIndex = 0
+        smoothedSpeedMps = 0.0
         _state.value = NavigationState.Navigating(
             route = route,
             progress = RouteProgress(
@@ -173,11 +176,22 @@ internal class NavigationController(private val config: EnaideConfig) {
         val distanceToEndOfStep = computeDistanceToEndOfStep(route, stepIndex, snap.distanceTraveledMeters)
         val distanceAlongStep = (currentStep.distanceMeters - distanceToEndOfStep).coerceAtLeast(0.0)
 
-        // ETA residuo: stima rolling. Per ora proporzionale alla distanza residua
-        // sulla durata totale. Quando avremo traffico/velocità rilevate, miglioreremo.
-        val durationRemaining = if (route.distanceMeters > 0) {
-            route.durationSeconds * (snap.distanceRemainingMeters / route.distanceMeters)
-        } else 0.0
+        // ETA residuo. Base: stima Valhalla proporzionale alla distanza residua.
+        // Affinamento: se abbiamo una velocità reale media (media mobile sui fix),
+        // mescoliamo le due stime — così l'ETA segue il ritmo effettivo dell'utente
+        // (traffico, andatura) invece della sola previsione teorica.
+        val fixSpeed = loc.speedMetersPerSecond ?: 0.0
+        if (fixSpeed > 0.3) { // ignora rumore da fermo
+            smoothedSpeedMps = if (smoothedSpeedMps <= 0.0) fixSpeed
+                else SPEED_SMOOTHING * fixSpeed + (1 - SPEED_SMOOTHING) * smoothedSpeedMps
+        }
+        val valhallaEta = if (route.distanceMeters > 0)
+            route.durationSeconds * (snap.distanceRemainingMeters / route.distanceMeters) else 0.0
+        val durationRemaining = if (smoothedSpeedMps > 0.5) {
+            val speedEta = snap.distanceRemainingMeters / smoothedSpeedMps
+            // Media pesata: diamo più fiducia al ritmo reale, ma non ignoriamo Valhalla.
+            ETA_REAL_WEIGHT * speedEta + (1 - ETA_REAL_WEIGHT) * valhallaEta
+        } else valhallaEta
 
         val arrived = snap.distanceRemainingMeters < ARRIVAL_THRESHOLD_METERS &&
                 stepIndex == route.steps.lastIndex
@@ -204,6 +218,7 @@ internal class NavigationController(private val config: EnaideConfig) {
             stepIndex = stepIndex,
             step = currentStep,
             distanceToManeuverMeters = distanceToEndOfStep,
+            speedMps = smoothedSpeedMps,
         )
         if (pendingSpoken != null) {
             _events.tryEmit(
@@ -257,6 +272,12 @@ internal class NavigationController(private val config: EnaideConfig) {
     companion object {
         /** Sotto questa distanza alla destinazione consideriamo l'arrivo. */
         private const val ARRIVAL_THRESHOLD_METERS = 20.0
+
+        /** Fattore EWMA per la velocità media mobile (0..1): più alto = più reattivo. */
+        private const val SPEED_SMOOTHING = 0.2
+
+        /** Peso dell'ETA "da velocità reale" rispetto alla stima Valhalla (0..1). */
+        private const val ETA_REAL_WEIGHT = 0.6
     }
 }
 
