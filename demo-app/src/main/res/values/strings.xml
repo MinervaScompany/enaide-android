@@ -73,6 +73,11 @@
     <string name="map_vector_light">Vettoriale chiaro</string>
     <string name="map_vector_dark">Vettoriale scuro</string>
     <string name="map_raster">Raster (offline)</string>
+    <string name="settings_offline">Mappe offline</string>
+    <string name="offline_download_area">Scarica area corrente</string>
+    <string name="offline_downloading">Scaricamento… %1$d%%</string>
+    <string name="offline_no_regions">Nessuna area scaricata</string>
+    <string name="offline_delete">Elimina</string>
     <string name="settings_voice">Guida vocale</string>
     <string name="settings_voice_toggle">Annunci vocali (TTS)</string>
     <string name="settings_server">Server (sola lettura)</string>

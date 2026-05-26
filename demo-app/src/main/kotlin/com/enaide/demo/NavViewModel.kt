@@ -90,6 +90,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val gpsSource = GpsLocationSource(app)
     private val compass = CompassSource(app)
     private val tripStore = TripStore(app)
+    private val offlineMaps = com.enaide.sdk.map.OfflineMaps(app)
 
     /** Stato live della navigazione esposto dall'SDK. */
     val navState: StateFlow<NavigationState> = navigator.state
@@ -142,6 +143,54 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val _mapStyle = MutableStateFlow(com.enaide.sdk.map.MapStyles.VECTOR_LIBERTY)
     val mapStyle: StateFlow<String> = _mapStyle.asStateFlow()
     fun setMapStyle(uri: String) { _mapStyle.value = uri }
+
+    // --- Mappe offline -------------------------------------------------------
+
+    /** Regioni offline salvate. */
+    private val _offlineRegions = MutableStateFlow<List<com.enaide.sdk.map.OfflineMaps.Region>>(emptyList())
+    val offlineRegions: StateFlow<List<com.enaide.sdk.map.OfflineMaps.Region>> = _offlineRegions.asStateFlow()
+
+    /** Progresso download corrente in % (null = nessun download in corso). */
+    private val _offlineProgress = MutableStateFlow<Int?>(null)
+    val offlineProgress: StateFlow<Int?> = _offlineProgress.asStateFlow()
+
+    fun refreshOfflineRegions() {
+        viewModelScope.launch { _offlineRegions.value = offlineMaps.list() }
+    }
+
+    /**
+     * Scarica per uso offline un'area (~25 km di lato) attorno alla posizione
+     * corrente, con lo stile mappa attivo.
+     */
+    fun downloadCurrentArea() {
+        if (_offlineProgress.value != null) return
+        val center = _currentPosition.value ?: DEFAULT_ORIGIN
+        // ~0.15° ≈ 16 km a queste latitudini: bbox di ~30 km.
+        val pad = 0.15
+        val name = "%.3f, %.3f".format(center.latitude, center.longitude)
+        viewModelScope.launch {
+            offlineMaps.download(
+                name = name,
+                styleUri = _mapStyle.value,
+                southWest = GeoPoint(center.latitude - pad, center.longitude - pad),
+                northEast = GeoPoint(center.latitude + pad, center.longitude + pad),
+            ).collect { p ->
+                when (p) {
+                    is com.enaide.sdk.map.OfflineMaps.Progress.Downloading -> _offlineProgress.value = p.percent
+                    com.enaide.sdk.map.OfflineMaps.Progress.Completed -> {
+                        _offlineProgress.value = null; refreshOfflineRegions()
+                    }
+                    is com.enaide.sdk.map.OfflineMaps.Progress.Failed -> {
+                        _offlineProgress.value = null; showError("Download offline fallito: ${p.reason}")
+                    }
+                }
+            }
+        }
+    }
+
+    fun deleteOfflineRegion(id: Long) {
+        viewModelScope.launch { offlineMaps.delete(id); refreshOfflineRegions() }
+    }
 
     /** Endpoint configurati (sola lettura nella demo: cambiarli richiede riavvio). */
     val routingEndpoint: String get() = config.routingBaseUrl

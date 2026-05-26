@@ -756,6 +756,40 @@ private fun SettingsScreen(vm: NavViewModel) {
             }
         }
 
+        // Mappe offline
+        val offlineRegions by vm.offlineRegions.collectAsState()
+        val offlineProgress by vm.offlineProgress.collectAsState()
+        LaunchedEffect(Unit) { vm.refreshOfflineRegions() }
+        SettingsSection(stringResource(R.string.settings_offline)) {
+            if (offlineProgress != null) {
+                Text(stringResource(R.string.offline_downloading, offlineProgress ?: 0))
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { (offlineProgress ?: 0) / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Button(onClick = { vm.downloadCurrentArea() }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.offline_download_area))
+                }
+            }
+            if (offlineRegions.isEmpty()) {
+                Text(stringResource(R.string.offline_no_regions), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline)
+            } else {
+                offlineRegions.forEach { region ->
+                    ListItem(
+                        headlineContent = { Text(region.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Icon(Icons.Filled.Map, contentDescription = null) },
+                        trailingContent = {
+                            IconButton(onClick = { vm.deleteOfflineRegion(region.id) }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.offline_delete))
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
         // Voce
         SettingsSection(stringResource(R.string.settings_voice)) {
             SettingRow(stringResource(R.string.settings_voice_toggle), voice) { vm.setVoiceEnabled(it) }
