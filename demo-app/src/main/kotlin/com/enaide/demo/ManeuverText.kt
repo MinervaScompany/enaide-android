@@ -1,19 +1,20 @@
 package com.enaide.demo
 
+import android.content.Context
 import com.enaide.sdk.model.Maneuver
 import com.enaide.sdk.model.ManeuverModifier
 import com.enaide.sdk.model.ManeuverType
 
 /**
- * Traduzione lato-UI di una [Maneuver] in glifo direzionale + testo italiano.
+ * Resa lato-UI di una [Maneuver]: glifo direzionale + testo **localizzato**.
  *
- * L'SDK espone tipi/modificatori grezzi e normalizzati (allineati a OSRM/Valhalla);
- * la resa testuale e' una scelta di presentazione, quindi vive nell'app, non nella
- * libreria. Cosi' un altro integratore puo' localizzare o sostituire le icone.
+ * L'SDK espone tipi/modificatori grezzi; la resa testuale è presentazione, quindi
+ * vive nell'app e legge da `strings.xml` (IT/EN…). È un *fallback*: di norma il
+ * testo turn-by-turn arriva già localizzato da Valhalla.
  */
 internal object ManeuverText {
 
-    /** Glifo a freccia per il banner. Usa caratteri Unicode per non dipendere da asset. */
+    /** Glifo a freccia (simboli Unicode, indipendenti dalla lingua). */
     fun glyph(maneuver: Maneuver): String = when (maneuver.type) {
         ManeuverType.DEPART -> "●"
         ManeuverType.ARRIVE -> "⚑"
@@ -36,42 +37,35 @@ internal object ManeuverText {
         ManeuverModifier.STRAIGHT, ManeuverModifier.NONE -> "↑"
     }
 
-    /**
-     * Frase imperativa breve per la manovra, opzionalmente legata al [roadName]
-     * (la strada su cui si entra dopo la manovra).
-     */
-    fun phrase(maneuver: Maneuver, roadName: String?): String {
-        val onto = roadName?.takeIf { it.isNotBlank() }?.let { " su $it" } ?: ""
+    /** Frase imperativa breve, localizzata, opzionalmente legata al [roadName]. */
+    fun phrase(ctx: Context, maneuver: Maneuver, roadName: String?): String {
+        val onto = roadName?.takeIf { it.isNotBlank() }
+            ?.let { ctx.getString(R.string.mnv_onto, it) } ?: ""
         return when (maneuver.type) {
-            ManeuverType.DEPART -> "Parti${onto}"
-            ManeuverType.ARRIVE -> "Sei arrivato a destinazione"
-            ManeuverType.CONTINUE, ManeuverType.NEW_NAME -> "Continua dritto${onto}"
-            ManeuverType.MERGE -> "Immettiti${onto}"
-            ManeuverType.ON_RAMP -> "Prendi la rampa${onto}"
-            ManeuverType.OFF_RAMP -> "Esci${onto}"
-            ManeuverType.FORK -> "Al bivio tieni la ${sideOrStraight(maneuver.modifier)}${onto}"
-            ManeuverType.END_OF_ROAD -> "Alla fine della strada svolta a ${sideOrStraight(maneuver.modifier)}${onto}"
+            ManeuverType.DEPART -> ctx.getString(R.string.mnv_depart, onto)
+            ManeuverType.ARRIVE -> ctx.getString(R.string.mnv_arrive)
+            ManeuverType.CONTINUE, ManeuverType.NEW_NAME -> ctx.getString(R.string.mnv_continue, onto)
+            ManeuverType.MERGE -> ctx.getString(R.string.mnv_merge, onto)
+            ManeuverType.ON_RAMP -> ctx.getString(R.string.mnv_on_ramp, onto)
+            ManeuverType.OFF_RAMP -> ctx.getString(R.string.mnv_off_ramp, onto)
+            ManeuverType.FORK -> ctx.getString(R.string.mnv_fork, side(ctx, maneuver.modifier), onto)
+            ManeuverType.END_OF_ROAD -> ctx.getString(R.string.mnv_end_of_road, side(ctx, maneuver.modifier), onto)
             ManeuverType.ROUNDABOUT, ManeuverType.ROUNDABOUT_EXIT -> {
                 val exit = maneuver.roundaboutExit
-                if (exit != null) "Alla rotonda prendi la ${ordinal(exit)} uscita${onto}"
-                else "Imbocca la rotonda${onto}"
+                if (exit != null) ctx.getString(R.string.mnv_roundabout_exit, exit, onto)
+                else ctx.getString(R.string.mnv_roundabout, onto)
             }
-            ManeuverType.UTURN -> "Fai inversione a U"
-            ManeuverType.TURN, ManeuverType.NOTIFICATION -> "Svolta a ${sideOrStraight(maneuver.modifier)}${onto}"
+            ManeuverType.UTURN -> ctx.getString(R.string.mnv_uturn)
+            ManeuverType.TURN, ManeuverType.NOTIFICATION -> ctx.getString(R.string.mnv_turn, side(ctx, maneuver.modifier), onto)
         }
     }
 
-    private fun sideOrStraight(modifier: ManeuverModifier): String = when (modifier) {
-        ManeuverModifier.LEFT, ManeuverModifier.SHARP_LEFT -> "sinistra"
-        ManeuverModifier.SLIGHT_LEFT -> "sinistra (leggermente)"
-        ManeuverModifier.RIGHT, ManeuverModifier.SHARP_RIGHT -> "destra"
-        ManeuverModifier.SLIGHT_RIGHT -> "destra (leggermente)"
-        ManeuverModifier.UTURN -> "inversione"
-        ManeuverModifier.STRAIGHT, ManeuverModifier.NONE -> "dritto"
-    }
-
-    private fun ordinal(n: Int): String = when (n) {
-        1 -> "1ª"; 2 -> "2ª"; 3 -> "3ª"; 4 -> "4ª"; 5 -> "5ª"
-        else -> "${n}ª"
-    }
+    private fun side(ctx: Context, modifier: ManeuverModifier): String = ctx.getString(when (modifier) {
+        ManeuverModifier.LEFT, ManeuverModifier.SHARP_LEFT -> R.string.dir_left
+        ManeuverModifier.SLIGHT_LEFT -> R.string.dir_slight_left
+        ManeuverModifier.RIGHT, ManeuverModifier.SHARP_RIGHT -> R.string.dir_right
+        ManeuverModifier.SLIGHT_RIGHT -> R.string.dir_slight_right
+        ManeuverModifier.UTURN -> R.string.dir_uturn
+        ManeuverModifier.STRAIGHT, ManeuverModifier.NONE -> R.string.dir_straight
+    })
 }

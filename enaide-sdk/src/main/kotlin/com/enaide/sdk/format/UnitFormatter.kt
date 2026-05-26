@@ -76,6 +76,19 @@ public object UnitFormatter {
     }
 
     /**
+     * Solo l'orario d'arrivo, senza prefisso testuale (es. "14:35"). Lascia che
+     * sia la UI ad aggiungere un'etichetta localizzata ("Arrivo alle", "ETA"...).
+     */
+    public fun formatClock(
+        durationSeconds: Double,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+        locale: Locale = italian,
+    ): String {
+        val etaMillis = nowEpochMillis + (durationSeconds * 1000L).toLong()
+        return java.text.SimpleDateFormat("HH:mm", locale).format(java.util.Date(etaMillis))
+    }
+
+    /**
      * Velocità m/s → "km/h" arrotondato.
      */
     public fun formatSpeedKmh(metersPerSecond: Double): String {

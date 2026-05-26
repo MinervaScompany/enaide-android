@@ -19,7 +19,7 @@
     <!-- Preview -->
     <string name="metric_distance">distanza</string>
     <string name="metric_duration">durata</string>
-    <string name="metric_arrival">arrivo</string>
+    <string name="metric_arrival">ETA</string>
     <string name="start_navigation">Avvia</string>
     <string name="stops_title">Tappe del viaggio</string>
     <string name="add_stop">Aggiungi tappa</string>
@@ -36,6 +36,27 @@
     <string name="off_route">Fuori percorso (%1$s)</string>
     <string name="terminate">Termina</string>
     <string name="proceed">Prosegui</string>
+
+    <!-- Manovre (fallback UI; di norma il testo arriva da Valhalla) -->
+    <string name="mnv_depart">Parti%1$s</string>
+    <string name="mnv_arrive">Sei arrivato a destinazione</string>
+    <string name="mnv_continue">Continua dritto%1$s</string>
+    <string name="mnv_merge">Immettiti%1$s</string>
+    <string name="mnv_on_ramp">Prendi la rampa%1$s</string>
+    <string name="mnv_off_ramp">Esci%1$s</string>
+    <string name="mnv_fork">Al bivio tieni la %1$s%2$s</string>
+    <string name="mnv_end_of_road">Alla fine della strada svolta a %1$s%2$s</string>
+    <string name="mnv_roundabout_exit">Alla rotonda prendi la %1$dª uscita%2$s</string>
+    <string name="mnv_roundabout">Imbocca la rotonda%1$s</string>
+    <string name="mnv_uturn">Fai inversione a U</string>
+    <string name="mnv_turn">Svolta a %1$s%2$s</string>
+    <string name="mnv_onto"> su %1$s</string>
+    <string name="dir_left">sinistra</string>
+    <string name="dir_slight_left">sinistra (leggermente)</string>
+    <string name="dir_right">destra</string>
+    <string name="dir_slight_right">destra (leggermente)</string>
+    <string name="dir_uturn">inversione</string>
+    <string name="dir_straight">dritto</string>
     <string name="recalculating">Ricalcolo del percorso…</string>
     <string name="arrived_title">Sei arrivato</string>
     <string name="new_trip">Nuovo viaggio</string>

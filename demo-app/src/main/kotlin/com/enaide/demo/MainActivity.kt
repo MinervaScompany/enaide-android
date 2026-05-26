@@ -366,7 +366,7 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Metric(UnitFormatter.formatDistance(route.distanceMeters), stringResource(R.string.metric_distance))
                     Metric(UnitFormatter.formatDuration(route.durationSeconds), stringResource(R.string.metric_duration))
-                    Metric(UnitFormatter.formatEta(route.durationSeconds).removePrefix("Arrivo alle "), stringResource(R.string.metric_arrival))
+                    Metric(UnitFormatter.formatClock(route.durationSeconds), stringResource(R.string.metric_arrival))
                 }
 
                 HorizontalDivider()
@@ -537,13 +537,14 @@ private fun ManeuverBanner(maneuver: com.enaide.sdk.model.Maneuver?, distanceToM
         ),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        val ctx = LocalContext.current
         Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(maneuver?.let { ManeuverText.glyph(it) } ?: "↑", fontSize = 44.sp)
             Column {
                 Text(UnitFormatter.formatDistance(distanceToManeuverMeters),
                     style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                Text(maneuver?.let { ManeuverText.phrase(it, null) } ?: stringResource(R.string.proceed),
+                Text(maneuver?.let { ManeuverText.phrase(ctx, it, null) } ?: stringResource(R.string.proceed),
                     style = MaterialTheme.typography.titleMedium)
             }
         }

@@ -29,6 +29,7 @@ sottosistema. Per la guida rapida vedi `README.md`.
 14. [Glossario](#14-glossario)
 15. [Funzionalità v0.3 (geocoding, eventi, GPS, TTS, mappa)](#15-funzionalità-v03)
 16. [Mappa per il porting iOS](#16-mappa-per-il-porting-ios)
+17. [Idea futura: server MCP](#17-idea-futura-server-mcp-per-lsdk)
 
 ---
 
@@ -1278,6 +1279,37 @@ riscrittura divergente.
 **Endpoint e policy identici:** Valhalla (`routingBaseUrl`), Nominatim
 (`nominatimBaseUrl`), `userAgent` identificativo. Le stesse note operative di §6
 e §15.1 valgono su iOS.
+
+---
+
+## 17. Idea futura: server MCP per l'SDK
+
+**Fattibile e sensato.** L'SDK ha già un'API a sottosistemi netti (routing,
+geocoding, POI, navigazione) con tipi sealed serializzabili: esporla come server
+**MCP** (Model Context Protocol) permetterebbe a un agente AI (Claude o altri) di
+usarla come set di *tool*.
+
+Forma ipotizzata:
+- Un processo server (Kotlin/JVM con l'Anthropic/MCP SDK, oppure un wrapper
+  Node/Python che chiama un binario) che monta il core enaide.
+- Tool esposti, mappati 1:1 sui sottosistemi:
+  - `compute_route(waypoints, profile, options)` → riepilogo + geometria
+  - `geocode(query)` / `reverse_geocode(lat, lon)`
+  - `search_poi(category, near|along_route)`
+  - `plan_trip(stops[])` / `edit_trip(add|remove|move)`
+  - `simulate_drive(route)` → stream di stati (per test/automazioni)
+- Risorse MCP read-only: stato di navigazione corrente, piano di viaggio.
+
+Vantaggi: un assistente può pianificare/modificare viaggi conversando ("aggiungi
+una tappa al distributore più vicino sul percorso"), e il flusso comando→evento
+dell'SDK (§15.10a) si presta perfettamente — i `NavigationCommand` diventano tool
+call, i `NavigationEvent` notifiche.
+
+Prerequisiti: estrarre il core in un artefatto JVM puro (già lo è, a parte i
+moduli Android UI), definire lo schema JSON dei tool dai modelli `@Serializable`.
+Non c'è nulla di bloccante: è lavoro di wrapping, non di riprogettazione.
+
+Stato: **idea, non pianificata**. Annotata qui per non perderla.
 
 ---
 

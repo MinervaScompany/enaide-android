@@ -151,7 +151,12 @@ solo la stringa di `EnaideConfig`.
 - [x] GPS reale (`LocationManager`) + permessi runtime, switch reale/simulato
 - [x] Simulatore con fisica di guida realistica + opzione errore-percorso (test reroute)
 - [x] Profilo mezzo + sagoma + navigazione a piedi/bici/camion (`enaide-sdk-vehicle`)
+- [x] POI con provider intercambiabile (Overpass/OSM) — `enaide-sdk-poi`
+- [x] Pianificazione viaggio multi-tappa (`TripPlan`) + editing in mappa
+- [x] Localizzazione testi (strings.xml IT/EN, lingua Valhalla = locale)
+- [ ] Navigazione "GPS-less" (avanzamento manuale step, utile a piedi)
 - [ ] Aggiornamenti traffico/messaggi runtime (sealed command/event già estensibili)
+- [ ] **Server MCP** per pilotare l'SDK da agenti AI (vedi `DOCS.md` §17)
 - [ ] Estrazione di mappa/TTS/location in moduli opzionali (`enaide-sdk-ui`, `-tts`, `-location`)
 - [ ] Componenti Compose pronti all'uso: lane guidance, banner istruzioni
 - [ ] Multi-stop con ottimizzazione VROOM (parte fleet)

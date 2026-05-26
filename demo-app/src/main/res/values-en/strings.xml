@@ -16,7 +16,7 @@
 
     <string name="metric_distance">distance</string>
     <string name="metric_duration">duration</string>
-    <string name="metric_arrival">arrival</string>
+    <string name="metric_arrival">ETA</string>
     <string name="start_navigation">Start</string>
     <string name="stops_title">Trip stops</string>
     <string name="add_stop">Add stop</string>
@@ -32,6 +32,27 @@
     <string name="off_route">Off route (%1$s)</string>
     <string name="terminate">Stop</string>
     <string name="proceed">Proceed</string>
+
+    <!-- Maneuvers (UI fallback; normally text comes from Valhalla) -->
+    <string name="mnv_depart">Start%1$s</string>
+    <string name="mnv_arrive">You have arrived at your destination</string>
+    <string name="mnv_continue">Continue straight%1$s</string>
+    <string name="mnv_merge">Merge%1$s</string>
+    <string name="mnv_on_ramp">Take the ramp%1$s</string>
+    <string name="mnv_off_ramp">Take the exit%1$s</string>
+    <string name="mnv_fork">At the fork keep %1$s%2$s</string>
+    <string name="mnv_end_of_road">At the end of the road turn %1$s%2$s</string>
+    <string name="mnv_roundabout_exit">At the roundabout take exit %1$d%2$s</string>
+    <string name="mnv_roundabout">Enter the roundabout%1$s</string>
+    <string name="mnv_uturn">Make a U-turn</string>
+    <string name="mnv_turn">Turn %1$s%2$s</string>
+    <string name="mnv_onto"> onto %1$s</string>
+    <string name="dir_left">left</string>
+    <string name="dir_slight_left">slightly left</string>
+    <string name="dir_right">right</string>
+    <string name="dir_slight_right">slightly right</string>
+    <string name="dir_uturn">U-turn</string>
+    <string name="dir_straight">straight</string>
     <string name="recalculating">Recalculating route…</string>
     <string name="arrived_title">You have arrived</string>
     <string name="new_trip">New trip</string>
