@@ -10,15 +10,13 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
-import io.ktor.http.appendPathSegments
+import io.ktor.http.Parameters
 import io.ktor.http.isSuccess
-import io.ktor.http.takeFrom
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
@@ -50,8 +48,14 @@ public class OverpassPoiProvider internal constructor(
             connectTimeoutMillis = config.requestTimeout.inWholeMilliseconds
             socketTimeoutMillis = config.requestTimeout.inWholeMilliseconds
         }
-        defaultRequest { header(HttpHeaders.UserAgent, config.userAgent) }
+        // overpass-api.de rifiuta (406) User-Agent che contengono URL tra
+        // parentesi (anti-scraping) — formato invece RICHIESTO da Nominatim.
+        // Qui usiamo un UA "semplice", solo prodotto/versione, senza la parte (+url).
+        defaultRequest { header(HttpHeaders.UserAgent, simpleUserAgent(config.userAgent)) }
     }
+
+    private fun simpleUserAgent(ua: String): String =
+        ua.substringBefore(" (").trim().ifBlank { "enaide-sdk" }
 
     override suspend fun nearby(
         center: GeoPoint,
@@ -97,13 +101,13 @@ public class OverpassPoiProvider internal constructor(
 
     private suspend fun runQuery(query: String, category: PoiCategory): PoiResult {
         val response: HttpResponse = try {
-            client.post {
-                url {
-                    takeFrom(config.overpassBaseUrl)
-                    appendPathSegments("api", "interpreter")
-                }
-                setBody("data=" + query)
-            }
+            // Overpass vuole un POST application/x-www-form-urlencoded con il
+            // parametro `data` (url-encoded). submitForm fa encoding + Content-Type
+            // corretti: inviare un body raw dava 406 Not Acceptable.
+            client.submitForm(
+                url = "${config.overpassBaseUrl.trimEnd('/')}/api/interpreter",
+                formParameters = Parameters.build { append("data", query) },
+            )
         } catch (t: Throwable) {
             return PoiResult.Failure(PoiError.NetworkError(t))
         }

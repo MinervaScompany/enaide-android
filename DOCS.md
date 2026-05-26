@@ -30,6 +30,7 @@ sottosistema. Per la guida rapida vedi `README.md`.
 15. [Funzionalità v0.3 (geocoding, eventi, GPS, TTS, mappa)](#15-funzionalità-v03)
 16. [Mappa per il porting iOS](#16-mappa-per-il-porting-ios)
 17. [Idea futura: server MCP](#17-idea-futura-server-mcp-per-lsdk)
+18. [API esterne: reference e note](#18-api-esterne-reference-e-note-operative)
 
 ---
 
@@ -1279,6 +1280,64 @@ riscrittura divergente.
 **Endpoint e policy identici:** Valhalla (`routingBaseUrl`), Nominatim
 (`nominatimBaseUrl`), `userAgent` identificativo. Le stesse note operative di §6
 e §15.1 valgono su iOS.
+
+---
+
+## 18. API esterne: reference e note operative
+
+Tutti i servizi usati dall'SDK sono OSM/open. Endpoint configurabili in
+`EnaideConfig`. Reference ufficiali e gotcha verificati sul campo:
+
+### Routing — Valhalla
+- **API reference**: https://valhalla.github.io/valhalla/api/
+- Turn-by-turn `/route`: https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/
+- Costing options (auto/truck/bicycle/pedestrian): stessa pagina, sezione "costing options"
+- `trace_attributes` (per speed limit / map-matching): https://valhalla.github.io/valhalla/api/map-matching/api-reference/
+- Demo pubblico FOSSGIS: `https://valhalla1.openstreetmap.de` — POST JSON a `/route`.
+- ⚠️ `language` va passato in `directions_options.language` e **serializzato** anche
+  se è il default (`encodeDefaults = true`), altrimenti Valhalla risponde in EN.
+
+### Geocoding — Nominatim
+- **API reference**: https://nominatim.org/release-docs/latest/api/Overview/
+- `/search` (forward): https://nominatim.org/release-docs/latest/api/Search/
+- `/reverse`: https://nominatim.org/release-docs/latest/api/Reverse/
+- Usage policy: https://operations.osmfoundation.org/policies/nominatim/
+- ⚠️ Max ~1 req/s, **User-Agent identificativo OBBLIGATORIO** col formato
+  `app/ver (+contatto)`. Debounce lato client (vedi demo) per evitare 429.
+
+### POI — Overpass API
+- **API reference**: https://wiki.openstreetmap.org/wiki/Overpass_API
+- Linguaggio query (Overpass QL): https://wiki.openstreetmap.org/wiki/Overpass_API/Overpass_QL
+- Guida/Language guide: https://wiki.openstreetmap.org/wiki/Overpass_API/Language_Guide
+- Test query: https://overpass-turbo.eu/
+- Endpoint pubblico: `https://overpass-api.de/api/interpreter` — **POST
+  `application/x-www-form-urlencoded`** col parametro `data=<query>` (Ktor
+  `submitForm`).
+- ⚠️ **Gotcha verificato**: `overpass-api.de` risponde **406 Not Acceptable** se lo
+  `User-Agent` contiene un URL tra parentesi (`(+http...)`) — formato invece
+  richiesto da Nominatim. Il POI client usa quindi un UA "semplice" (solo
+  prodotto/versione). Senza UA → anche 406.
+- Tag OSM per categoria: https://wiki.openstreetmap.org/wiki/Map_features
+- Fair use: <10.000 query/giorno, <1 GB/giorno sull'istanza pubblica.
+
+### Mappa — MapLibre + tiles
+- MapLibre Native Android: https://maplibre.org/maplibre-native/docs/book/android/
+- MapLibre Style Spec (stesso JSON cross-platform): https://maplibre.org/maplibre-style-spec/
+- Tile raster OSM (`tile.openstreetmap.org`) usage policy:
+  https://operations.osmfoundation.org/policies/tiles/
+- ⚠️ Tile raster OSM solo per dev/volumi bassi; per produzione vector tiles
+  (MapTiler/Protomaps) con relativa API key.
+
+### Riepilogo endpoint in `EnaideConfig`
+| Servizio | Campo | Default |
+|----------|-------|---------|
+| Valhalla | `routingBaseUrl` | `valhalla1.openstreetmap.de` |
+| Nominatim | `nominatimBaseUrl` | `nominatim.openstreetmap.org` |
+| Overpass | `overpassBaseUrl` | `overpass-api.de` |
+| User-Agent | `userAgent` | `enaide-sdk/… (+contatto)` |
+
+**Controparte iOS:** stessi endpoint e policy; il gotcha UA Overpass vale identico
+(usare UA semplice per Overpass, completo per Nominatim).
 
 ---
 
