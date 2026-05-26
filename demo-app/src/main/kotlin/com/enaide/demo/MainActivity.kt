@@ -58,6 +58,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -149,8 +151,15 @@ private fun AppShell(vm: NavViewModel) {
     val tab by vm.tab.collectAsState()
     val screen by vm.screen.collectAsState()
     val navigating = screen is Screen.Driving || screen is Screen.Preview
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Gli errori one-shot dell'SDK diventano snackbar.
+    LaunchedEffect(Unit) {
+        vm.errors.collect { snackbarHostState.showSnackbar(it) }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
@@ -256,50 +265,57 @@ private fun MapScreen(vm: NavViewModel) {
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.my_location)) }
 
-        // Categorie POI: solo sulla mappa libera, non durante la navigazione.
-        if (!navigating) PoiCategoryBar(
-            selected = poiCategory,
-            onPick = { vm.togglePoiCategory(it) },
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 16.dp),
-        )
-
+        // In alto: search bar + sotto la riga delle categorie POI.
         var expanded by remember { mutableStateOf(false) }
-        SearchBar(
-            modifier = Modifier.align(Alignment.TopCenter),
-            inputField = {
-                SearchBarDefaults.InputField(
-                    query = query,
-                    onQueryChange = { query = it; vm.search(it) },
-                    onSearch = { vm.search(it) },
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it },
-                    placeholder = { Text(stringResource(R.string.search_destination)) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = ""; vm.clearSearch() }) {
-                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.search_clear))
-                            }
-                        }
-                    },
-                )
-            },
-            expanded = expanded,
-            onExpandedChange = { expanded = it },
+        Column(
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (busy) {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.searching)) },
-                    leadingContent = { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) },
-                )
-            }
-            LazyColumn {
-                items(results) { place ->
-                    ResultRow(place) { expanded = false; vm.planTo(place) }
+            SearchBar(
+                inputField = {
+                    SearchBarDefaults.InputField(
+                        query = query,
+                        onQueryChange = { query = it; vm.search(it) },
+                        onSearch = { vm.search(it) },
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it },
+                        placeholder = { Text(stringResource(R.string.search_destination)) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = ""; vm.clearSearch() }) {
+                                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.search_clear))
+                                }
+                            }
+                        },
+                    )
+                },
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                if (busy) {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.searching)) },
+                        leadingContent = { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) },
+                    )
+                }
+                LazyColumn {
+                    items(results) { place ->
+                        ResultRow(place) { expanded = false; vm.planTo(place) }
+                    }
+                }
+                message?.let {
+                    ListItem(headlineContent = { Text(it) })
                 }
             }
-            message?.let {
-                ListItem(headlineContent = { Text(it, color = MaterialTheme.colorScheme.error) })
+
+            // Categorie POI sotto la search bar (solo mappa libera, non in navigazione).
+            if (!navigating && !expanded) {
+                PoiCategoryBar(
+                    selected = poiCategory,
+                    onPick = { vm.togglePoiCategory(it) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
         }
     }

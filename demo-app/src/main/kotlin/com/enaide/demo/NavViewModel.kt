@@ -102,6 +102,12 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val _planningMessage = MutableStateFlow<String?>(null)
     val planningMessage: StateFlow<String?> = _planningMessage.asStateFlow()
 
+    /** Errori "one-shot" da mostrare come snackbar/toast. */
+    private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val errors: SharedFlow<String> = _errors
+
+    private fun showError(message: String) { _errors.tryEmit(message) }
+
     /** True mentre geocoding+routing sono in corso (mostra spinner, disabilita bottone). */
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -196,7 +202,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                 poiProvider.nearby(center, category)
             }
             _pois.value = (result as? PoiResult.Success)?.pois ?: emptyList()
-            if (result is PoiResult.Failure) _planningMessage.value = str(R.string.poi_unavailable)
+            if (result is PoiResult.Failure) showError(str(R.string.poi_unavailable))
             _busy.value = false
         }
     }
@@ -269,53 +275,6 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                 stopLiveLocation()
                 _customOrigin.value?.let { _currentPosition.value = it.point }
             }
-        }
-    }
-
-    /**
-     * Geocodifica i due input, calcola il percorso e passa a [Screen.Preview].
-     * Accetta sia indirizzi liberi (forward geocoding) sia coordinate `lat,lon`.
-     */
-    fun planRoute(originInput: String, destinationInput: String) {
-        if (_busy.value) return
-        viewModelScope.launch {
-            _busy.value = true
-            _planningMessage.value = "Cerco l'origine…"
-            val origin = resolve(originInput)
-            if (origin == null) {
-                _planningMessage.value = "Origine non trovata: \"$originInput\""
-                _busy.value = false
-                return@launch
-            }
-
-            _planningMessage.value = "Cerco la destinazione…"
-            val dest = resolve(destinationInput)
-            if (dest == null) {
-                _planningMessage.value = "Destinazione non trovata: \"$destinationInput\""
-                _busy.value = false
-                return@launch
-            }
-
-            _planningMessage.value = "Calcolo il percorso…"
-            val vehicle = currentVehicleProfile()
-            when (val result = navigator.computeRoute(
-                waypoints = listOf(origin.point, dest.point),
-                profile = vehicle.toProfile(),
-                options = vehicle.toRouteOptions(),
-            )) {
-                is RouteResult.Success -> {
-                    _planningMessage.value = null
-                    _screen.value = Screen.Preview(
-                        route = result.route,
-                        originLabel = origin.displayName,
-                        destinationLabel = dest.displayName,
-                    )
-                }
-                is RouteResult.Failure -> {
-                    _planningMessage.value = describeRoutingError(result.error, origin, dest)
-                }
-            }
-            _busy.value = false
         }
     }
 
@@ -427,11 +386,11 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
             when (val res = geocoder.search(query, limit = 6)) {
                 is GeocodeResult.Success -> {
                     _searchResults.value = res.places
-                    _planningMessage.value = if (res.places.isEmpty()) "Nessun risultato" else null
+                    _planningMessage.value = if (res.places.isEmpty()) str(R.string.no_results) else null
                 }
                 is GeocodeResult.Failure -> {
                     _searchResults.value = emptyList()
-                    _planningMessage.value = geocodingErrorMessage(res.error)
+                    showError(geocodingErrorMessage(res.error))
                 }
             }
             _busy.value = false
@@ -482,8 +441,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                     originLabel = str(R.string.origin_label),
                     destinationLabel = destination.displayName,
                 )
-                is RouteResult.Failure -> _planningMessage.value =
-                    str(R.string.err_route_failed, result.error.toString())
+                is RouteResult.Failure -> showError(str(R.string.err_route_failed, result.error.toString()))
             }
             _busy.value = false
         }
@@ -512,40 +470,6 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         if (_locationMode.value == LocationMode.GPS) startLiveLocation()
     }
 
-    private suspend fun resolve(input: String): GeocodedPlace? {
-        parseGeo(input)?.let { point ->
-            val label = (geocoder.reverse(point) as? GeocodeResult.Success)
-                ?.places?.firstOrNull()?.displayName
-            return GeocodedPlace(point, label ?: "${point.latitude}, ${point.longitude}")
-        }
-        return (geocoder.search(input, limit = 1) as? GeocodeResult.Success)
-            ?.places?.firstOrNull()
-    }
-
-    private fun parseGeo(input: String): GeoPoint? {
-        val parts = input.split(",").map { it.trim() }
-        if (parts.size != 2) return null
-        val lat = parts[0].toDoubleOrNull() ?: return null
-        val lon = parts[1].toDoubleOrNull() ?: return null
-        return runCatching { GeoPoint(lat, lon) }.getOrNull()
-    }
-
-    private fun describeRoutingError(error: RoutingError, origin: GeocodedPlace, dest: GeocodedPlace): String =
-        when (error) {
-            is RoutingError.ServerError ->
-                if (error.body?.contains("suitable edges") == true || error.httpStatus == 400) {
-                    "Valhalla non trova strade percorribili vicino a uno dei punti.\n" +
-                        "Origine: ${origin.point.latitude}, ${origin.point.longitude}\n" +
-                        "Destinazione: ${dest.point.latitude}, ${dest.point.longitude}\n" +
-                        "Verifica che siano su terraferma e raggiungibili in auto."
-                } else {
-                    "Errore server (${error.httpStatus}): ${error.body}"
-                }
-            is RoutingError.NoRouteFound -> "Nessun percorso tra i due punti: ${error.message}"
-            is RoutingError.NetworkError -> "Errore di rete: ${error.cause.message}"
-            is RoutingError.InvalidRequest -> "Richiesta non valida: ${error.message}"
-            is RoutingError.ParseError -> "Risposta non interpretabile: ${error.cause.message}"
-        }
 
     override fun onCleared() {
         locationJob?.cancel()
