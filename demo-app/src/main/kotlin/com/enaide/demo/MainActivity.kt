@@ -109,6 +109,7 @@ import com.enaide.sdk.map.MapMarker
 import com.enaide.sdk.map.RouteMap
 import com.enaide.sdk.poi.PoiCategory
 import com.enaide.sdk.model.Deviation
+import com.enaide.sdk.model.LaneDirection
 import com.enaide.sdk.model.NavigationEvent
 import com.enaide.sdk.model.NavigationState
 import com.enaide.sdk.tts.VoiceGuidance
@@ -526,6 +527,8 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
                         fontWeight = FontWeight.SemiBold)
                 }
             }
+            // Lane guidance: frecce corsie della manovra in arrivo.
+            nextStep?.lanes?.takeIf { it.isNotEmpty() }?.let { LaneBar(it) }
         }
 
         // Cartello limite velocità (se noto per lo step corrente).
@@ -863,6 +866,38 @@ private fun PoiCategory.label(): String = stringResource(when (this) {
     PoiCategory.TOILETS -> R.string.poi_toilets
     PoiCategory.ATTRACTION -> R.string.poi_attraction
 })
+
+/** Barra corsie: per ogni corsia mostra le frecce; quelle valide/attive evidenziate. */
+@Composable
+private fun LaneBar(lanes: List<com.enaide.sdk.model.Lane>) {
+    Card {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            lanes.forEach { lane ->
+                val highlighted = lane.active || lane.valid
+                Text(
+                    text = laneGlyph(lane.directions),
+                    fontSize = 22.sp,
+                    color = if (highlighted) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant,
+                    fontWeight = if (lane.active) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
+private fun laneGlyph(dirs: Set<LaneDirection>): String = when {
+    LaneDirection.THROUGH in dirs -> "↑"
+    LaneDirection.SLIGHT_LEFT in dirs -> "↖"
+    LaneDirection.LEFT in dirs || LaneDirection.SHARP_LEFT in dirs -> "←"
+    LaneDirection.SLIGHT_RIGHT in dirs -> "↗"
+    LaneDirection.RIGHT in dirs || LaneDirection.SHARP_RIGHT in dirs -> "→"
+    LaneDirection.REVERSE in dirs -> "↓"
+    else -> "•"
+}
 
 /** Cartello limite velocità stile europeo: cerchio bianco, bordo rosso, numero nero. */
 @Composable

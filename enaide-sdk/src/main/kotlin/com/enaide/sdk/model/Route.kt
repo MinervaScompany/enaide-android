@@ -21,6 +21,8 @@ public data class RouteStep(
     public val spokenInstructions: List<SpokenInstruction> = emptyList(),
     /** Limite di velocità in km/h sullo step, se noto (da Valhalla trace_attributes). `null` = ignoto. */
     public val speedLimitKmh: Int? = null,
+    /** Indicazioni di corsia alla manovra dello step (lane guidance), vuoto se non disponibili. */
+    public val lanes: List<Lane> = emptyList(),
 )
 
 /**

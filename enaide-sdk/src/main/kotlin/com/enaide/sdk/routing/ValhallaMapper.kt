@@ -125,6 +125,14 @@ internal object ValhallaMapper {
             )
         }
 
+        val lanes = m.lanes.orEmpty().map { l ->
+            com.enaide.sdk.model.Lane(
+                directions = com.enaide.sdk.model.LaneDirection.fromBitmask(l.directions),
+                valid = l.valid != null && l.valid != 0,
+                active = l.active != null && l.active != 0,
+            )
+        }
+
         return RouteStep(
             geometry = stepGeometry,
             maneuver = maneuver,
@@ -133,6 +141,7 @@ internal object ValhallaMapper {
             roadName = m.streetNames?.firstOrNull() ?: m.beginStreetNames?.firstOrNull(),
             visualInstructions = listOf(visual),
             spokenInstructions = spoken,
+            lanes = lanes,
         )
     }
 

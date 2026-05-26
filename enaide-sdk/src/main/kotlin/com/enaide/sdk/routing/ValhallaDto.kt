@@ -22,6 +22,7 @@ internal data class ValhallaRouteRequest(
     @SerialName("shape_format") val shapeFormat: String = "polyline6",
     val units: String = "kilometers",
     val alternates: Int = 0,
+    @SerialName("turn_lanes") val turnLanes: Boolean = true, // abilita la lane guidance
     val id: String? = null,
 )
 
@@ -107,6 +108,14 @@ internal data class ValhallaManeuver(
     @SerialName("roundabout_exit_count") val roundaboutExitCount: Int? = null,
     @SerialName("bearing_before") val bearingBefore: Double? = null,
     @SerialName("bearing_after") val bearingAfter: Double? = null,
+    val lanes: List<ValhallaLane>? = null,
+)
+
+@Serializable
+internal data class ValhallaLane(
+    val directions: Int = 0,
+    val valid: Int? = null,
+    val active: Int? = null,
 )
 
 // =============================================================================
