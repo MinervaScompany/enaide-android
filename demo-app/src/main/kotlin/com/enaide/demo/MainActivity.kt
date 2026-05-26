@@ -208,9 +208,13 @@ private fun AppShell(vm: NavViewModel) {
         }
     }
 
+    // Durante la guida (tab Naviga attiva) la bottom bar scompare: vista immersiva.
+    val immersive = navigating && tab == AppTab.NAV
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
+            if (immersive) return@Scaffold
             NavigationBar {
                 NavigationBarItem(
                     selected = tab == AppTab.MAP,
@@ -691,12 +695,24 @@ private fun ManeuverBanner(
                         style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
-            // Corsie sotto, ma nella stessa card.
+            // Lane assistant: corsie CENTRATE nella card, separate da divisori.
             if (lanes.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f))
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    lanes.forEach { lane ->
-                        Text(laneGlyph(lane.directions), fontSize = 20.sp,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    lanes.forEachIndexed { i, lane ->
+                        if (i > 0) {
+                            // Striscia tratteggiata verticale tra le corsie.
+                            Text("┊", fontSize = 22.sp,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f),
+                                modifier = Modifier.padding(horizontal = 6.dp))
+                        }
+                        Text(laneGlyph(lane.directions), fontSize = 24.sp,
                             color = if (lane.active || lane.valid) MaterialTheme.colorScheme.onPrimary
                                     else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f),
                             fontWeight = if (lane.active) FontWeight.Bold else FontWeight.Normal)
