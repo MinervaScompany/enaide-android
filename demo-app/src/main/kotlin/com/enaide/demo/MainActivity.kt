@@ -209,9 +209,14 @@ private fun AppShell(vm: NavViewModel) {
             }
         }
     ) { padding ->
-        // Un solo punto in cui applichiamo il padding dello Scaffold: il container.
-        // Le schermate dentro usano fillMaxSize senza padding manuali.
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        // La mappa va EDGE-TO-EDGE (anche sotto la status bar): NON applichiamo il
+        // top inset al container. Riserviamo solo lo spazio per la bottom bar; gli
+        // overlay in alto (search/banner) usano statusBarsPadding per conto loro.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = padding.calculateBottomPadding())
+        ) {
             when (tab) {
                 AppTab.MAP -> MapTab(vm)
                 AppTab.NAV -> NavTab(vm)
@@ -647,7 +652,11 @@ private fun SettingsScreen(vm: NavViewModel) {
     ) { granted -> if (granted) { vm.setLocationMode(LocationMode.GPS); vm.startLiveLocation() } }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .statusBarsPadding() // il container non applica più il top inset
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
