@@ -181,6 +181,21 @@ private fun AppShell(vm: NavViewModel) {
         vm.errors.collect { snackbarHostState.showSnackbar(it) }
     }
 
+    // All'avvio, se c'è un viaggio interrotto (kill/crash), offri di riprenderlo.
+    val resumeMsg = stringResource(R.string.resume_trip)
+    val resumeAction = stringResource(R.string.resume)
+    LaunchedEffect(Unit) {
+        if (vm.hasRecoverableTrip) {
+            val res = snackbarHostState.showSnackbar(
+                message = resumeMsg,
+                actionLabel = resumeAction,
+                duration = androidx.compose.material3.SnackbarDuration.Long,
+            )
+            if (res == androidx.compose.material3.SnackbarResult.ActionPerformed) vm.restoreTrip()
+            else vm.discardRecoverableTrip()
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {

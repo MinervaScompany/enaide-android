@@ -89,6 +89,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val poiProvider = OverpassPoiProvider(config)
     private val gpsSource = GpsLocationSource(app)
     private val compass = CompassSource(app)
+    private val tripStore = TripStore(app)
 
     /** Stato live della navigazione esposto dall'SDK. */
     val navState: StateFlow<NavigationState> = navigator.state
@@ -447,6 +448,8 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         navigator.start(preview.route)
         _screen.value = Screen.Driving(preview.originLabel, preview.destinationLabel)
         _tab.value = AppTab.NAV
+        // Persisti il viaggio per poterlo recuperare dopo un kill/crash.
+        tripStore.save(_tripPlan.value, _vehicleKind.value)
 
         locationJob?.cancel()
         // In MANUAL (GPS-less) non c'è sorgente: si avanza con advanceStep().
@@ -609,11 +612,29 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         navigator.dispatch(com.enaide.sdk.model.NavigationCommand.Recalculate)
     }
 
+    /** True se esiste un viaggio salvato da recuperare (dopo kill/crash). */
+    val hasRecoverableTrip: Boolean get() = tripStore.load() != null
+
+    /**
+     * Recupera il viaggio salvato: ripristina mezzo e piano, RICALCOLA il percorso
+     * e va in anteprima pronto a ripartire. No-op se non c'è nulla da recuperare.
+     */
+    fun restoreTrip() {
+        val saved = tripStore.load() ?: return
+        _vehicleKind.value = saved.vehicle
+        _tripPlan.value = saved.plan
+        recomputePlan()
+    }
+
+    /** Scarta il viaggio recuperabile (l'utente non vuole riprenderlo). */
+    fun discardRecoverableTrip() = tripStore.clear()
+
     /** Ferma la guida e torna alla mappa libera. */
     fun stopDriving() {
         locationJob?.cancel()
         locationJob = null
         navigator.stop()
+        tripStore.clear() // viaggio terminato: niente da recuperare
         _currentSpeedMps.value = 0.0
         _screen.value = Screen.Map
         _tab.value = AppTab.MAP

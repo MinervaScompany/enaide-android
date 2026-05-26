@@ -71,6 +71,8 @@
     <string name="manual_mode">Manual (walking)</string>
     <string name="next_step">Next step</string>
     <string name="skip_stop">Skip stop</string>
+    <string name="resume_trip">Resume your trip?</string>
+    <string name="resume">Resume</string>
     <string name="simulate_error">Simulate error (test reroute)</string>
     <string name="origin_label">Starting point</string>
     <string name="origin_search">Search a starting point</string>

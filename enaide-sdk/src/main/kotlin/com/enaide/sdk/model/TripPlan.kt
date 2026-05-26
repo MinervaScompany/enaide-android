@@ -1,5 +1,7 @@
 package com.enaide.sdk.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Piano di viaggio: la lista **ordinata** dei waypoint da cui si calcola un
  * percorso — origine, eventuali tappe intermedie, destinazione.
@@ -15,6 +17,7 @@ package com.enaide.sdk.model
  *   la destinazione; quelli in mezzo sono tappe. Serve almeno 1 elemento per
  *   costruirlo, ma ne servono ≥2 perché [isRoutable].
  */
+@Serializable
 public data class TripPlan(
     public val stops: List<TripStop> = emptyList(),
 ) {
@@ -81,6 +84,7 @@ public data class TripPlan(
  * @property point coordinate WGS84.
  * @property label nome mostrato all'utente (indirizzo, nome POI, "la mia posizione").
  */
+@Serializable
 public data class TripStop(
     public val point: GeoPoint,
     public val label: String,
