@@ -160,6 +160,23 @@ fun RouteMap(
                     if (position == null) fitToRoute(map, it)
                 }
             }
+            // Bussola nativa MapLibre: abilitata, in alto a destra ma spostata in
+            // basso (sotto la search bar) e a sinistra (lontano dal FAB ricentra).
+            // Si nasconde da sola quando la mappa è a nord (tap = torna a nord).
+            map.uiSettings.apply {
+                isCompassEnabled = true
+                setCompassFadeFacingNorth(true)
+                setCompassGravity(android.view.Gravity.TOP or android.view.Gravity.END)
+                val d = context.resources.displayMetrics.density
+                setCompassMargins(0, (96 * d).toInt(), (16 * d).toInt(), 0)
+                isRotateGesturesEnabled = true
+                // Logo + attribution OSM (obbligatoria) in basso a sinistra, alzati
+                // così non finiscono sotto la scheda inferiore.
+                setLogoGravity(android.view.Gravity.BOTTOM or android.view.Gravity.START)
+                setLogoMargins((8 * d).toInt(), 0, 0, (8 * d).toInt())
+                setAttributionGravity(android.view.Gravity.BOTTOM or android.view.Gravity.START)
+                setAttributionMargins((72 * d).toInt(), 0, 0, (8 * d).toInt())
+            }
             map.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
                     cameraState?.followMode = false
