@@ -114,14 +114,32 @@ fun RouteMap(
     val colors = EnaideTheme.colors
     val mapView = remember { MapView(context) }
     val holder = remember { MapHolder() }
-    // Callback aggiornabili senza ricreare la mappa.
-    holder.onLongPress = onLongPress
-    holder.onMarkerClick = onMarkerClick
+    // Callback aggiornabili senza ricreare la mappa. In SideEffect: mutazione di
+    // stato fatta dopo una composizione andata a buon fine, non durante.
+    androidx.compose.runtime.SideEffect {
+        holder.onLongPress = onLongPress
+        holder.onMarkerClick = onMarkerClick
+    }
+
+    // Lifecycle del MapView legato a quello Android (non alla composizione): così
+    // in background la mappa si ferma davvero (niente render/GL/location sprecati).
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> mapView.onStart()
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> mapView.onStop()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     DisposableEffect(Unit) {
         mapView.onCreate(null)
-        mapView.onStart()
-        mapView.onResume()
         mapView.getMapAsync { map ->
             holder.map = map
             map.setStyle(Style.Builder().fromUri("asset://osm_raster_style.json")) { style ->
@@ -163,7 +181,8 @@ fun RouteMap(
         }
         onDispose {
             cameraState?.onRecenter = null
-            mapView.onPause(); mapView.onStop(); mapView.onDestroy()
+            // start/stop/pause/resume li gestisce il LifecycleObserver; qui solo destroy.
+            mapView.onDestroy()
         }
     }
 

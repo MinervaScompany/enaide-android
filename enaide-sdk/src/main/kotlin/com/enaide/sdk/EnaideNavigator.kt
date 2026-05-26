@@ -90,13 +90,21 @@ public interface EnaideNavigator {
     /** Termina la navigazione. Equivale a `dispatch(NavigationCommand.Stop)`. */
     public fun stop()
 
+    /**
+     * Rilascia tutte le risorse possedute dall'SDK: chiude il client HTTP del
+     * routing e cancella lo scope di coroutine interno. Da chiamare quando l'SDK
+     * non serve più (es. `ViewModel.onCleared`). Dopo [shutdown] l'istanza non è
+     * più utilizzabile.
+     */
+    public fun shutdown()
+
     public companion object {
         /**
          * Crea un'istanza di default dell'SDK con la [config] fornita.
          *
          * @return istanza pronta all'uso. Le risorse interne (coroutine scope,
-         *   HTTP client) sono ownate dall'SDK e rilasciate al primo [stop] dopo
-         *   che il processo entra in background — vedi `EnaideNavigatorImpl` per dettagli.
+         *   HTTP client) sono ownate dall'SDK: chiama [shutdown] per rilasciarle
+         *   quando l'istanza non serve più.
          */
         @JvmStatic
         public fun create(config: EnaideConfig = EnaideConfig()): EnaideNavigator =

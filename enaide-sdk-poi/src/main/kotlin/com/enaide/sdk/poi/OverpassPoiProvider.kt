@@ -34,7 +34,7 @@ import kotlinx.serialization.json.Json
 public class OverpassPoiProvider internal constructor(
     private val config: EnaideConfig,
     httpClient: HttpClient?,
-) : PoiProvider {
+) : PoiProvider, AutoCloseable {
 
     /** Costruttore pubblico: HTTP engine OkHttp interno (Ktor non esposto). */
     public constructor(config: EnaideConfig) : this(config, null)
@@ -137,5 +137,9 @@ public class OverpassPoiProvider internal constructor(
             if (dist <= maxMeters) return true
         }
         return false
+    }
+
+    override fun close() {
+        client.close()
     }
 }

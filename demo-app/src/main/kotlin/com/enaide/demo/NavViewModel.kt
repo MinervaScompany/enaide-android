@@ -188,18 +188,21 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val _pois = MutableStateFlow<List<Poi>>(emptyList())
     val pois: StateFlow<List<Poi>> = _pois.asStateFlow()
 
+    private var poiJob: Job? = null
+
     /**
      * Mostra/nasconde i POI di una categoria. Cerca "vicino" sulla mappa libera,
      * "lungo il percorso" in anteprima/guida (se c'è un route attivo).
      */
     fun togglePoiCategory(category: PoiCategory) {
+        poiJob?.cancel() // evita che una risposta vecchia sovrascriva la nuova categoria
         if (_poiCategory.value == category) {
             _poiCategory.value = null
             _pois.value = emptyList()
             return
         }
         _poiCategory.value = category
-        viewModelScope.launch {
+        poiJob = viewModelScope.launch {
             _busy.value = true
             val activeRoute = (_screen.value as? Screen.Preview)?.route
                 ?: (navState.value as? NavigationState.Navigating)?.route
@@ -494,10 +497,11 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                 profile = vehicle.toProfile(),
                 options = vehicle.toRouteOptions(),
             )
-            if (result is RouteResult.Success) {
-                navigator.dispatch(com.enaide.sdk.model.NavigationCommand.ReplaceRoute(result.route))
-            } else {
-                showError(str(R.string.err_route_failed, (result as RouteResult.Failure).error.toString()))
+            when (result) {
+                is RouteResult.Success ->
+                    navigator.dispatch(com.enaide.sdk.model.NavigationCommand.ReplaceRoute(result.route))
+                is RouteResult.Failure ->
+                    showError(str(R.string.err_route_failed, result.error.toString()))
             }
         }
     }
@@ -622,7 +626,10 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         locationJob?.cancel()
         liveGpsJob?.cancel()
-        navigator.stop()
+        // Rilascia le risorse di rete: senza, OkHttp tiene vivi pool e thread.
+        navigator.shutdown()
+        runCatching { geocoder.close() }
+        runCatching { poiProvider.close() }
     }
 
     private fun geocodingErrorMessage(error: com.enaide.sdk.geocoding.GeocodingError): String = when (error) {
