@@ -14,6 +14,8 @@ import com.enaide.sdk.model.NavigationState
 import com.enaide.sdk.model.Route
 import com.enaide.sdk.routing.RouteResult
 import com.enaide.sdk.routing.RoutingError
+import com.enaide.sdk.model.TripPlan
+import com.enaide.sdk.model.TripStop
 import com.enaide.sdk.model.VehicleDimensions
 import com.enaide.sdk.poi.OverpassPoiProvider
 import com.enaide.sdk.poi.Poi
@@ -207,10 +209,103 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Naviga verso un POI (tap sul marker). */
+    /** Naviga verso un POI (tap sul marker): lo imposta come destinazione. */
     fun navigateToPoi(poiId: String) {
         val poi = _pois.value.firstOrNull { it.point.poiId() == poiId } ?: return
         planTo(GeocodedPlace(poi.point, poi.name ?: str(R.string.poi_default_name)))
+    }
+
+    // --- Pianificazione percorso (TripPlan) ----------------------------------
+
+    /** Piano di viaggio corrente (origine → tappe → destinazione). */
+    private val _tripPlan = MutableStateFlow(TripPlan())
+    val tripPlan: StateFlow<TripPlan> = _tripPlan.asStateFlow()
+
+    /** Percorso calcolato dal piano corrente (per anteprima/mappa). `null` se non calcolato. */
+    private val _previewRoute = MutableStateFlow<Route?>(null)
+    val previewRoute: StateFlow<Route?> = _previewRoute.asStateFlow()
+
+    private var recomputeJob: Job? = null
+
+    /** Coordinate da usare come origine di default (GPS live o posizione corrente). */
+    private fun defaultOriginStop(): TripStop {
+        val p = _currentPosition.value ?: DEFAULT_ORIGIN
+        return TripStop(p, applicationGetString(R.string.origin_label))
+    }
+
+    private fun applicationGetString(id: Int) = getApplication<Application>().getString(id)
+
+    /** Inizia un piano verso [destination] dall'origine corrente, e calcola. */
+    fun planTo(destination: GeocodedPlace) {
+        _searchResults.value = emptyList()
+        _tripPlan.value = TripPlan.of(
+            origin = defaultOriginStop(),
+            destination = TripStop(destination.point, destination.displayName),
+        )
+        recomputePlan()
+    }
+
+    /** Aggiunge una tappa al piano (da ricerca/POI/long-press) e ricalcola. */
+    fun addStop(place: GeocodedPlace) {
+        val plan = _tripPlan.value
+        _tripPlan.value = if (plan.isRoutable) {
+            plan.addStop(TripStop(place.point, place.displayName))
+        } else {
+            // Piano vuoto/incompleto: lo trattiamo come destinazione.
+            if (plan.stops.isEmpty()) TripPlan.of(defaultOriginStop(), TripStop(place.point, place.displayName))
+            else plan.withDestination(TripStop(place.point, place.displayName))
+        }
+        recomputePlan()
+    }
+
+    fun removeStop(index: Int) {
+        _tripPlan.value = _tripPlan.value.removeStop(index)
+        recomputePlan()
+    }
+
+    fun moveStop(from: Int, to: Int) {
+        _tripPlan.value = _tripPlan.value.moveStop(from, to)
+        recomputePlan()
+    }
+
+    /** Cambia origine (consentito solo fuori dalla navigazione assistita da GPS). */
+    fun setOrigin(place: GeocodedPlace) {
+        _tripPlan.value = _tripPlan.value.withOrigin(TripStop(place.point, place.displayName))
+        recomputePlan()
+    }
+
+    fun clearPlan() {
+        recomputeJob?.cancel()
+        _tripPlan.value = TripPlan()
+        _previewRoute.value = null
+    }
+
+    /** Ricalcola il percorso dal piano corrente, con debounce (ad ogni modifica). */
+    private fun recomputePlan() {
+        recomputeJob?.cancel()
+        val plan = _tripPlan.value
+        if (!plan.isRoutable) { _previewRoute.value = null; return }
+        recomputeJob = viewModelScope.launch {
+            delay(ROUTE_DEBOUNCE_MS)
+            _busy.value = true
+            val vehicle = currentVehicleProfile()
+            when (val result = navigator.computeRoute(
+                waypoints = plan.waypoints,
+                profile = vehicle.toProfile(),
+                options = vehicle.toRouteOptions(),
+            )) {
+                is RouteResult.Success -> {
+                    _previewRoute.value = result.route
+                    _screen.value = Screen.Preview(
+                        route = result.route,
+                        originLabel = plan.origin?.label ?: "",
+                        destinationLabel = plan.destination?.label ?: "",
+                    )
+                }
+                is RouteResult.Failure -> showError(str(R.string.err_route_failed, result.error.toString()))
+            }
+            _busy.value = false
+        }
     }
 
     /** Tipo di mezzo scelto (auto/piedi/bici/camion). */
@@ -414,39 +509,6 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Calcola il percorso dalla posizione corrente (o, se ignota, da un default)
-     * verso [destination] e va in anteprima. Usato dopo la scelta di un risultato.
-     */
-    fun planTo(destination: GeocodedPlace) {
-        if (_busy.value) return
-        viewModelScope.launch {
-            _busy.value = true
-            _searchResults.value = emptyList()
-            // Origine: GPS live se in modalità GPS, altrimenti l'origine manuale
-            // impostata, infine il default.
-            val origin = when {
-                _locationMode.value == LocationMode.GPS && _currentPosition.value != null -> _currentPosition.value!!
-                _customOrigin.value != null -> _customOrigin.value!!.point
-                else -> _currentPosition.value ?: DEFAULT_ORIGIN
-            }
-            val vehicle = currentVehicleProfile()
-            when (val result = navigator.computeRoute(
-                waypoints = listOf(origin, destination.point),
-                profile = vehicle.toProfile(),
-                options = vehicle.toRouteOptions(),
-            )) {
-                is RouteResult.Success -> _screen.value = Screen.Preview(
-                    route = result.route,
-                    originLabel = str(R.string.origin_label),
-                    destinationLabel = destination.displayName,
-                )
-                is RouteResult.Failure -> showError(str(R.string.err_route_failed, result.error.toString()))
-            }
-            _busy.value = false
-        }
-    }
-
     fun backToMap() {
         _screen.value = Screen.Map
         _planningMessage.value = null
@@ -500,5 +562,8 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         /** Tentativi di lettura posizione iniziale + attesa fra l'uno e l'altro. */
         const val LOCATE_RETRIES = 5
         const val LOCATE_RETRY_DELAY_MS = 800L
+
+        /** Debounce del ricalcolo percorso ad ogni modifica del piano. */
+        const val ROUTE_DEBOUNCE_MS = 400L
     }
 }

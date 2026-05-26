@@ -32,6 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
@@ -334,16 +336,22 @@ private fun ResultRow(place: GeocodedPlace, onClick: () -> Unit) {
 
 // --- Preview ----------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
     val route = screen.route
+    val plan by vm.tripPlan.collectAsState()
+    val results by vm.searchResults.collectAsState()
+    val busy by vm.busy.collectAsState()
     val cameraState = remember { MapCameraState() }
+    var addQuery by remember { mutableStateOf("") }
+    var addExpanded by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         RouteMap(route = route, position = null, cameraState = cameraState, modifier = Modifier.fillMaxSize())
 
         FloatingActionButton(
-            onClick = vm::backToMap,
+            onClick = { vm.clearPlan(); vm.backToMap() },
             modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
         ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
 
@@ -351,16 +359,62 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
         ) {
             Column(
-                modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(16.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(screen.destinationLabel, style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // Metriche
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Metric(UnitFormatter.formatDistance(route.distanceMeters), stringResource(R.string.metric_distance))
                     Metric(UnitFormatter.formatDuration(route.durationSeconds), stringResource(R.string.metric_duration))
                     Metric(UnitFormatter.formatEta(route.durationSeconds).removePrefix("Arrivo alle "), stringResource(R.string.metric_arrival))
                 }
+
+                HorizontalDivider()
+                Text(stringResource(R.string.stops_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+
+                // Lista tappe modificabile
+                plan.stops.forEachIndexed { i, stop ->
+                    val role = when (i) {
+                        0 -> stringResource(R.string.stop_origin)
+                        plan.stops.lastIndex -> stringResource(R.string.stop_destination)
+                        else -> "${i}."
+                    }
+                    StopRow(
+                        role = role,
+                        label = stop.label,
+                        canMoveUp = i > 0,
+                        canMoveDown = i < plan.stops.lastIndex,
+                        canRemove = plan.stops.size > 2,
+                        onUp = { vm.moveStop(i, i - 1) },
+                        onDown = { vm.moveStop(i, i + 1) },
+                        onRemove = { vm.removeStop(i) },
+                    )
+                }
+
+                // Aggiungi tappa (ricerca dedicata)
+                SearchBar(
+                    inputField = {
+                        SearchBarDefaults.InputField(
+                            query = addQuery,
+                            onQueryChange = { addQuery = it; vm.search(it) },
+                            onSearch = { vm.search(it) },
+                            expanded = addExpanded,
+                            onExpandedChange = { addExpanded = it },
+                            placeholder = { Text(stringResource(R.string.add_stop)) },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        )
+                    },
+                    expanded = addExpanded,
+                    onExpandedChange = { addExpanded = it },
+                ) {
+                    if (busy) ListItem(headlineContent = { Text(stringResource(R.string.searching)) })
+                    LazyColumn {
+                        items(results) { place ->
+                            ResultRow(place) { addExpanded = false; addQuery = ""; vm.addStop(place) }
+                        }
+                    }
+                }
+
                 Button(onClick = vm::startDriving, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Navigation, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -369,6 +423,37 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
             }
         }
     }
+}
+
+@Composable
+private fun StopRow(
+    role: String,
+    label: String,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    canRemove: Boolean,
+    onUp: () -> Unit,
+    onDown: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    ListItem(
+        leadingContent = { Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        overlineContent = { Text(role) },
+        headlineContent = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        trailingContent = {
+            Row {
+                if (canMoveUp) IconButton(onClick = onUp) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.move_up))
+                }
+                if (canMoveDown) IconButton(onClick = onDown) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.move_down))
+                }
+                if (canRemove) IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.remove_stop))
+                }
+            }
+        },
+    )
 }
 
 // --- Tab Navigazione --------------------------------------------------------

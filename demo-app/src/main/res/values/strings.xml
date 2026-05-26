@@ -21,6 +21,13 @@
     <string name="metric_duration">durata</string>
     <string name="metric_arrival">arrivo</string>
     <string name="start_navigation">Avvia</string>
+    <string name="stops_title">Tappe del viaggio</string>
+    <string name="add_stop">Aggiungi tappa</string>
+    <string name="remove_stop">Rimuovi tappa</string>
+    <string name="move_up">Su</string>
+    <string name="move_down">Giù</string>
+    <string name="stop_origin">Partenza</string>
+    <string name="stop_destination">Destinazione</string>
 
     <!-- Driving -->
     <string name="metric_eta">all\'arrivo</string>
