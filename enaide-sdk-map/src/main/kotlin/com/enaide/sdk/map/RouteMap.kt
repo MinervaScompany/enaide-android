@@ -198,7 +198,8 @@ fun RouteMap(
                 isCompassEnabled = true
                 setCompassFadeFacingNorth(true)
                 setCompassGravity(android.view.Gravity.BOTTOM or android.view.Gravity.START)
-                setCompassMargins((16 * d).toInt(), 0, 0, (220 * d).toInt())
+                // Alla stessa altezza del FAB ricentra (CenterEnd, bottom≈180dp).
+                setCompassMargins((16 * d).toInt(), 0, 0, (180 * d).toInt())
                 isRotateGesturesEnabled = true
                 setLogoGravity(android.view.Gravity.BOTTOM or android.view.Gravity.END)
                 setLogoMargins(0, 0, (8 * d).toInt(), (8 * d).toInt())

@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Wc
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -64,6 +65,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -605,63 +607,63 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
             threeD = true, cameraState = cameraState, markers = tripMarkers(route),
             styleUri = mapStyle, modifier = Modifier.fillMaxSize())
 
-        // Banner manovra unico in alto: freccia + distanza + frase, nome strada e
-        // corsie tutto dentro la stessa card.
-        ManeuverBanner(
-            maneuver = nextStep?.maneuver,
-            distanceToManeuverMeters = progress.distanceToNextManeuverMeters,
-            roadName = nextStep?.roadName,
-            lanes = nextStep?.lanes.orEmpty(),
+        // In alto: banner manovra + (sotto, a destra) il cartello limite velocità.
+        Column(
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(),
-        )
-
-        // Cartello limite velocità (se noto per lo step corrente).
-        step?.speedLimitKmh?.let { limit ->
-            SpeedLimitSign(
-                limit,
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp, bottom = 160.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ManeuverBanner(
+                maneuver = nextStep?.maneuver,
+                distanceToManeuverMeters = progress.distanceToNextManeuverMeters,
+                roadName = nextStep?.roadName,
+                lanes = nextStep?.lanes.orEmpty(),
+                modifier = Modifier.fillMaxWidth(),
             )
+            step?.speedLimitKmh?.let { SpeedLimitSign(it) }
         }
 
+        // FAB ricentra in basso a destra (la bussola è in basso a sinistra, stessa altezza).
         FloatingActionButton(
             onClick = { cameraState.recenter() },
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 160.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 180.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.recenter)) }
 
         // Card inferiore compatta: una riga di metriche + riga azioni.
+        // Card compatta: metriche a sinistra, azioni come sole icone a destra.
         Card(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)) {
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Metric(UnitFormatter.formatDuration(progress.durationRemainingSeconds), stringResource(R.string.metric_eta))
                     Metric(UnitFormatter.formatDistance(progress.distanceRemainingMeters), stringResource(R.string.metric_remaining))
                     Metric(UnitFormatter.formatSpeedKmh(speedMps), stringResource(R.string.metric_current_speed))
+                    Spacer(Modifier.weight(1f))
+                    if (vm.isManualMode) {
+                        FilledTonalIconButton(onClick = { vm.advanceStep() }) {
+                            Icon(Icons.Filled.Navigation, contentDescription = stringResource(R.string.next_step))
+                        }
+                    }
+                    if (vm.hasIntermediateStops) {
+                        FilledTonalIconButton(onClick = { vm.skipNextStop() }) {
+                            Icon(Icons.Filled.SkipNext, contentDescription = stringResource(R.string.skip_stop))
+                        }
+                    }
+                    // Termina: icona rossa (azione distruttiva).
+                    FilledTonalIconButton(
+                        onClick = onStop,
+                        colors = androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        ),
+                    ) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.terminate)) }
                 }
                 (state.deviation as? Deviation.OffRoute)?.let { off ->
                     Text(stringResource(R.string.off_route, UnitFormatter.formatDistance(off.distanceFromRouteMeters)),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                // Azioni su una riga, compatte: prossimo step (manuale) / salta tappa / termina.
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (vm.isManualMode) {
-                        Button(onClick = { vm.advanceStep() }, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.next_step))
-                        }
-                    }
-                    if (vm.hasIntermediateStops) {
-                        OutlinedButton(onClick = { vm.skipNextStop() }, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.skip_stop))
-                        }
-                    }
-                    FilledTonalButton(onClick = onStop, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.terminate))
-                    }
                 }
             }
         }
