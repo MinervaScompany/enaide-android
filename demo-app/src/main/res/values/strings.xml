@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">enaide demo</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_map">Mappa</string>
+    <string name="tab_navigate">Naviga</string>
+    <string name="tab_settings">Impostazioni</string>
+
+    <!-- Map / search -->
+    <string name="search_destination">Cerca destinazione</string>
+    <string name="search_clear">Pulisci</string>
+    <string name="searching">Cerco…</string>
+    <string name="no_results">Nessun risultato</string>
+    <string name="my_location">La mia posizione</string>
+    <string name="back">Indietro</string>
+    <string name="recenter">Ricentra</string>
+
+    <!-- Preview -->
+    <string name="metric_distance">distanza</string>
+    <string name="metric_duration">durata</string>
+    <string name="metric_arrival">arrivo</string>
+    <string name="start_navigation">Avvia</string>
+
+    <!-- Driving -->
+    <string name="metric_eta">all\'arrivo</string>
+    <string name="metric_remaining">rimanenti</string>
+    <string name="metric_current_speed">attuale</string>
+    <string name="off_route">Fuori percorso (%1$s)</string>
+    <string name="terminate">Termina</string>
+    <string name="proceed">Prosegui</string>
+    <string name="recalculating">Ricalcolo del percorso…</string>
+    <string name="arrived_title">Sei arrivato</string>
+    <string name="new_trip">Nuovo viaggio</string>
+
+    <!-- Voice -->
+    <string name="voice_arrived">Sei arrivato a destinazione.</string>
+    <string name="voice_recalculating">Ricalcolo del percorso.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Impostazioni</string>
+    <string name="settings_vehicle">Mezzo</string>
+    <string name="settings_position">Posizione</string>
+    <string name="settings_voice">Guida vocale</string>
+    <string name="settings_voice_toggle">Annunci vocali (TTS)</string>
+    <string name="settings_server">Server (sola lettura)</string>
+    <string name="gps_real">GPS reale</string>
+    <string name="simulated">Simulato</string>
+    <string name="simulate_error">Simula errore (test reroute)</string>
+    <string name="origin_label">Origine di partenza</string>
+    <string name="origin_search">Cerca un punto di partenza</string>
+    <string name="origin_remove">Rimuovi origine</string>
+    <string name="truck_height">Altezza (m)</string>
+    <string name="truck_weight">Peso (kg)</string>
+    <string name="server_routing">Routing (Valhalla)</string>
+    <string name="server_geocoding">Geocoding (Nominatim)</string>
+
+    <!-- Vehicle kinds -->
+    <string name="vehicle_car">Auto</string>
+    <string name="vehicle_pedestrian">A piedi</string>
+    <string name="vehicle_bicycle">Bici</string>
+    <string name="vehicle_truck">Camion</string>
+
+    <!-- POI categories -->
+    <string name="poi_fuel">Carburante</string>
+    <string name="poi_charging">Ricarica</string>
+    <string name="poi_parking">Parcheggi</string>
+    <string name="poi_food">Ristoro</string>
+    <string name="poi_supermarket">Market</string>
+    <string name="poi_atm">Bancomat</string>
+    <string name="poi_pharmacy">Farmacia</string>
+    <string name="poi_hospital">Ospedale</string>
+    <string name="poi_hotel">Hotel</string>
+    <string name="poi_toilets">Bagni</string>
+    <string name="poi_attraction">Attrazioni</string>
+    <string name="poi_default_name">POI</string>
+    <string name="poi_unavailable">POI non disponibili al momento.</string>
+
+    <!-- Errors -->
+    <string name="err_rate_limit">Troppe richieste a Nominatim (limite pubblico). Riprova fra un minuto.</string>
+    <string name="err_geocoding_server">Errore server geocoding (%1$d).</string>
+    <string name="err_network_search">Errore di rete nella ricerca.</string>
+    <string name="err_search_invalid">Ricerca non valida.</string>
+    <string name="err_parse">Risposta non interpretabile.</string>
+    <string name="err_route_failed">Impossibile calcolare il percorso: %1$s</string>
+</resources>

@@ -196,7 +196,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
                 poiProvider.nearby(center, category)
             }
             _pois.value = (result as? PoiResult.Success)?.pois ?: emptyList()
-            if (result is PoiResult.Failure) _planningMessage.value = "POI non disponibili al momento."
+            if (result is PoiResult.Failure) _planningMessage.value = str(R.string.poi_unavailable)
             _busy.value = false
         }
     }
@@ -204,7 +204,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     /** Naviga verso un POI (tap sul marker). */
     fun navigateToPoi(poiId: String) {
         val poi = _pois.value.firstOrNull { it.point.poiId() == poiId } ?: return
-        planTo(GeocodedPlace(poi.point, poi.name ?: "POI"))
+        planTo(GeocodedPlace(poi.point, poi.name ?: str(R.string.poi_default_name)))
     }
 
     /** Tipo di mezzo scelto (auto/piedi/bici/camion). */
@@ -226,11 +226,17 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         VehicleKind.PEDESTRIAN -> 5.0
     }
 
-    private fun currentVehicleProfile(): VehicleProfile = when (_vehicleKind.value) {
-        VehicleKind.CAR -> VehicleProfile.car()
-        VehicleKind.PEDESTRIAN -> VehicleProfile.pedestrian()
-        VehicleKind.BICYCLE -> VehicleProfile.bicycle()
-        VehicleKind.TRUCK -> VehicleProfile.truck(_truckDimensions.value)
+    private fun currentVehicleProfile(): VehicleProfile {
+        // Lingua delle istruzioni allineata al locale dell'app: Valhalla restituisce
+        // le frasi turn-by-turn (testo + voce) già localizzate in quella lingua.
+        val lang = java.util.Locale.getDefault().toLanguageTag()
+        val base = when (_vehicleKind.value) {
+            VehicleKind.CAR -> VehicleProfile.car()
+            VehicleKind.PEDESTRIAN -> VehicleProfile.pedestrian()
+            VehicleKind.BICYCLE -> VehicleProfile.bicycle()
+            VehicleKind.TRUCK -> VehicleProfile.truck(_truckDimensions.value)
+        }
+        return base.copy(language = lang)
     }
 
     /**
@@ -473,11 +479,11 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
             )) {
                 is RouteResult.Success -> _screen.value = Screen.Preview(
                     route = result.route,
-                    originLabel = "La tua posizione",
+                    originLabel = str(R.string.origin_label),
                     destinationLabel = destination.displayName,
                 )
                 is RouteResult.Failure -> _planningMessage.value =
-                    "Impossibile calcolare il percorso: ${result.error}"
+                    str(R.string.err_route_failed, result.error.toString())
             }
             _busy.value = false
         }
@@ -549,13 +555,16 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun geocodingErrorMessage(error: com.enaide.sdk.geocoding.GeocodingError): String = when (error) {
         is com.enaide.sdk.geocoding.GeocodingError.ServerError ->
-            if (error.httpStatus == 429)
-                "Troppe richieste a Nominatim (limite pubblico). Riprova fra un minuto."
-            else "Errore server geocoding (${error.httpStatus})."
-        is com.enaide.sdk.geocoding.GeocodingError.NetworkError -> "Errore di rete nella ricerca."
-        is com.enaide.sdk.geocoding.GeocodingError.InvalidRequest -> "Ricerca non valida."
-        is com.enaide.sdk.geocoding.GeocodingError.ParseError -> "Risposta non interpretabile."
+            if (error.httpStatus == 429) str(R.string.err_rate_limit)
+            else str(R.string.err_geocoding_server, error.httpStatus)
+        is com.enaide.sdk.geocoding.GeocodingError.NetworkError -> str(R.string.err_network_search)
+        is com.enaide.sdk.geocoding.GeocodingError.InvalidRequest -> str(R.string.err_search_invalid)
+        is com.enaide.sdk.geocoding.GeocodingError.ParseError -> str(R.string.err_parse)
     }
+
+    /** Helper per leggere una stringa localizzata dall'Application context. */
+    private fun str(resId: Int, vararg args: Any): String =
+        getApplication<Application>().getString(resId, *args)
 
     private companion object {
         /** Origine di fallback se la posizione utente è ignota (centro Zurigo). */

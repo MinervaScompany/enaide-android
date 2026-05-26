@@ -71,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.enaide.demo.R
 import com.enaide.sdk.format.UnitFormatter
 import com.enaide.sdk.geocoding.GeocodedPlace
 import com.enaide.sdk.map.EnaideTheme
@@ -112,6 +114,7 @@ class MainActivity : ComponentActivity() {
             EnaideTheme {
                 val vm: NavViewModel = viewModel()
                 val voiceEnabled by vm.voiceEnabled.collectAsState()
+                val context = LocalContext.current
 
                 LaunchedEffect(Unit) {
                     vm.events.collect { event ->
@@ -120,9 +123,9 @@ class MainActivity : ComponentActivity() {
                                 if (voiceEnabled) voice.speak(event.instruction.text)
                             is NavigationEvent.Started -> voice.reset()
                             is NavigationEvent.Arrived ->
-                                if (voiceEnabled) voice.speak("Sei arrivato a destinazione.")
+                                if (voiceEnabled) voice.speak(context.getString(R.string.voice_arrived))
                             is NavigationEvent.OffRouteConfirmed -> {
-                                if (voiceEnabled) voice.speak("Ricalcolo del percorso.")
+                                if (voiceEnabled) voice.speak(context.getString(R.string.voice_recalculating))
                                 vm.recalculate()
                             }
                             else -> Unit
@@ -154,7 +157,7 @@ private fun AppShell(vm: NavViewModel) {
                     selected = tab == AppTab.MAP,
                     onClick = { vm.selectTab(AppTab.MAP) },
                     icon = { Icon(Icons.Filled.Map, contentDescription = null) },
-                    label = { Text("Mappa") },
+                    label = { Text(stringResource(R.string.tab_map)) },
                 )
                 // La tab Navigazione appare solo durante un viaggio attivo.
                 if (navigating) {
@@ -162,14 +165,14 @@ private fun AppShell(vm: NavViewModel) {
                         selected = tab == AppTab.NAV,
                         onClick = { vm.selectTab(AppTab.NAV) },
                         icon = { Icon(Icons.Filled.Navigation, contentDescription = null) },
-                        label = { Text("Naviga") },
+                        label = { Text(stringResource(R.string.tab_navigate)) },
                     )
                 }
                 NavigationBarItem(
                     selected = tab == AppTab.SETTINGS,
                     onClick = { vm.selectTab(AppTab.SETTINGS) },
                     icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                    label = { Text("Impostazioni") },
+                    label = { Text(stringResource(R.string.tab_settings)) },
                 )
             }
         }
@@ -213,9 +216,12 @@ private fun MapScreen(vm: NavViewModel) {
     var query by remember { mutableStateOf("") }
 
     // Se in navigazione, mostriamo il tragitto anche sulla mappa libera, così si
-    // possono fare modifiche (es. cercare POI lungo il percorso) da qui.
+    // possono fare modifiche da qui.
+    val navigating = navState is NavigationState.Navigating
     val activeRoute = (navState as? NavigationState.Navigating)?.route
-    val markers = pois.map { MapMarker(it.point.poiId(), it.point, it.name ?: "POI") }
+    // I POI si mostrano SOLO sulla mappa libera, non durante la navigazione attiva.
+    val markers = if (navigating) emptyList()
+        else pois.map { MapMarker(it.point.poiId(), it.point, it.name ?: "POI") }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -248,10 +254,10 @@ private fun MapScreen(vm: NavViewModel) {
         FloatingActionButton(
             onClick = { locate() },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-        ) { Icon(Icons.Filled.MyLocation, contentDescription = "La mia posizione") }
+        ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.my_location)) }
 
-        // Riga di chip categorie POI, sotto la search bar.
-        PoiCategoryBar(
+        // Categorie POI: solo sulla mappa libera, non durante la navigazione.
+        if (!navigating) PoiCategoryBar(
             selected = poiCategory,
             onPick = { vm.togglePoiCategory(it) },
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 16.dp),
@@ -267,12 +273,12 @@ private fun MapScreen(vm: NavViewModel) {
                     onSearch = { vm.search(it) },
                     expanded = expanded,
                     onExpandedChange = { expanded = it },
-                    placeholder = { Text("Cerca destinazione") },
+                    placeholder = { Text(stringResource(R.string.search_destination)) },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = { query = ""; vm.clearSearch() }) {
-                                Icon(Icons.Filled.Close, contentDescription = "Pulisci")
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.search_clear))
                             }
                         }
                     },
@@ -283,7 +289,7 @@ private fun MapScreen(vm: NavViewModel) {
         ) {
             if (busy) {
                 ListItem(
-                    headlineContent = { Text("Cerco…") },
+                    headlineContent = { Text(stringResource(R.string.searching)) },
                     leadingContent = { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) },
                 )
             }
@@ -323,7 +329,7 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
         FloatingActionButton(
             onClick = vm::backToMap,
             modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro") }
+        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
 
         Card(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
@@ -335,14 +341,14 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
                 Text(screen.destinationLabel, style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Metric(UnitFormatter.formatDistance(route.distanceMeters), "distanza")
-                    Metric(UnitFormatter.formatDuration(route.durationSeconds), "durata")
-                    Metric(UnitFormatter.formatEta(route.durationSeconds).removePrefix("Arrivo alle "), "arrivo")
+                    Metric(UnitFormatter.formatDistance(route.distanceMeters), stringResource(R.string.metric_distance))
+                    Metric(UnitFormatter.formatDuration(route.durationSeconds), stringResource(R.string.metric_duration))
+                    Metric(UnitFormatter.formatEta(route.durationSeconds).removePrefix("Arrivo alle "), stringResource(R.string.metric_arrival))
                 }
                 Button(onClick = vm::startDriving, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Navigation, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Avvia")
+                    Text(stringResource(R.string.start_navigation))
                 }
             }
         }
@@ -395,24 +401,24 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
         FloatingActionButton(
             onClick = { cameraState.recenter() },
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 160.dp),
-        ) { Icon(Icons.Filled.MyLocation, contentDescription = "Ricentra") }
+        ) { Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.recenter)) }
 
         Card(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Metric(UnitFormatter.formatDuration(progress.durationRemainingSeconds), "all'arrivo")
-                    Metric(UnitFormatter.formatDistance(progress.distanceRemainingMeters), "rimanenti")
-                    Metric(UnitFormatter.formatSpeedKmh(speedMps), "attuale")
+                    Metric(UnitFormatter.formatDuration(progress.durationRemainingSeconds), stringResource(R.string.metric_eta))
+                    Metric(UnitFormatter.formatDistance(progress.distanceRemainingMeters), stringResource(R.string.metric_remaining))
+                    Metric(UnitFormatter.formatSpeedKmh(speedMps), stringResource(R.string.metric_current_speed))
                 }
                 if (state.deviation is Deviation.OffRoute) {
                     val off = state.deviation as Deviation.OffRoute
-                    Text("Fuori percorso (${UnitFormatter.formatDistance(off.distanceFromRouteMeters)})",
+                    Text(stringResource(R.string.off_route, UnitFormatter.formatDistance(off.distanceFromRouteMeters)),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 FilledTonalButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Termina")
+                    Text(stringResource(R.string.terminate))
                 }
             }
         }
@@ -436,7 +442,7 @@ private fun ManeuverBanner(maneuver: com.enaide.sdk.model.Maneuver?, distanceToM
             Column {
                 Text(UnitFormatter.formatDistance(distanceToManeuverMeters),
                     style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                Text(maneuver?.let { ManeuverText.phrase(it, null) } ?: "Prosegui",
+                Text(maneuver?.let { ManeuverText.phrase(it, null) } ?: stringResource(R.string.proceed),
                     style = MaterialTheme.typography.titleMedium)
             }
         }
@@ -451,9 +457,9 @@ private fun ArrivedScreen(destinationLabel: String, onClose: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(Icons.Filled.Place, contentDescription = null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-        Text("Sei arrivato", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.arrived_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(destinationLabel, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-        Button(onClick = onClose) { Text("Nuovo viaggio") }
+        Button(onClick = onClose) { Text(stringResource(R.string.new_trip)) }
     }
 }
 
@@ -465,8 +471,8 @@ private fun RecalculatingScreen(onStop: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         CircularProgressIndicator()
-        Text("Ricalcolo del percorso…", style = MaterialTheme.typography.titleMedium)
-        FilledTonalButton(onClick = onStop) { Text("Termina") }
+        Text(stringResource(R.string.recalculating), style = MaterialTheme.typography.titleMedium)
+        FilledTonalButton(onClick = onStop) { Text(stringResource(R.string.terminate)) }
     }
 }
 
@@ -488,16 +494,16 @@ private fun SettingsScreen(vm: NavViewModel) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("Impostazioni", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
         // Mezzo
-        SettingsSection("Mezzo") {
+        SettingsSection(stringResource(R.string.settings_vehicle)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 VehicleKind.entries.forEach { kind ->
                     FilterChip(
                         selected = vehicle == kind, onClick = { vm.setVehicleKind(kind) },
                         leadingIcon = { Icon(kind.icon(), contentDescription = null, Modifier.size(18.dp)) },
-                        label = { Text(kind.displayName) },
+                        label = { Text(kind.label()) },
                     )
                 }
             }
@@ -505,7 +511,7 @@ private fun SettingsScreen(vm: NavViewModel) {
         }
 
         // Posizione
-        SettingsSection("Posizione") {
+        SettingsSection(stringResource(R.string.settings_position)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = mode == LocationMode.GPS,
@@ -516,29 +522,29 @@ private fun SettingsScreen(vm: NavViewModel) {
                         if (granted) { vm.setLocationMode(LocationMode.GPS); vm.startLiveLocation() }
                         else permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                     },
-                    label = { Text("GPS reale") },
+                    label = { Text(stringResource(R.string.gps_real)) },
                 )
                 FilterChip(
                     selected = mode == LocationMode.SIMULATED,
                     onClick = { vm.setLocationMode(LocationMode.SIMULATED); vm.stopLiveLocation() },
-                    label = { Text("Simulato") },
+                    label = { Text(stringResource(R.string.simulated)) },
                 )
             }
             if (mode == LocationMode.SIMULATED) {
-                SettingRow("Simula errore (test reroute)", wrongTurn) { vm.setSimulateWrongTurn(it) }
+                SettingRow(stringResource(R.string.simulate_error), wrongTurn) { vm.setSimulateWrongTurn(it) }
                 OriginPicker(vm)
             }
         }
 
         // Voce
-        SettingsSection("Guida vocale") {
-            SettingRow("Annunci vocali (TTS)", voice) { vm.setVoiceEnabled(it) }
+        SettingsSection(stringResource(R.string.settings_voice)) {
+            SettingRow(stringResource(R.string.settings_voice_toggle), voice) { vm.setVoiceEnabled(it) }
         }
 
         // Server
-        SettingsSection("Server (sola lettura)") {
-            LabeledValue("Routing (Valhalla)", vm.routingEndpoint)
-            LabeledValue("Geocoding (Nominatim)", vm.geocodingEndpoint)
+        SettingsSection(stringResource(R.string.settings_server)) {
+            LabeledValue(stringResource(R.string.server_routing), vm.routingEndpoint)
+            LabeledValue(stringResource(R.string.server_geocoding), vm.geocodingEndpoint)
         }
     }
 }
@@ -550,14 +556,14 @@ private fun OriginPicker(vm: NavViewModel) {
     var query by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Origine di partenza", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.origin_label), style = MaterialTheme.typography.bodyMedium)
         origin?.let {
             ListItem(
                 headlineContent = { Text(it.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 leadingContent = { Icon(Icons.Filled.Place, contentDescription = null) },
                 trailingContent = {
                     IconButton(onClick = { query = ""; vm.clearCustomOrigin() }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Rimuovi origine")
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.origin_remove))
                     }
                 },
             )
@@ -565,7 +571,7 @@ private fun OriginPicker(vm: NavViewModel) {
         OutlinedTextField(
             value = query,
             onValueChange = { query = it; vm.searchOrigin(it) },
-            placeholder = { Text("Cerca un punto di partenza") },
+            placeholder = { Text(stringResource(R.string.origin_search)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -609,6 +615,14 @@ private fun LabeledValue(label: String, value: String) {
 
 // --- Componenti riusabili ---------------------------------------------------
 
+@Composable
+private fun VehicleKind.label(): String = stringResource(when (this) {
+    VehicleKind.CAR -> R.string.vehicle_car
+    VehicleKind.PEDESTRIAN -> R.string.vehicle_pedestrian
+    VehicleKind.BICYCLE -> R.string.vehicle_bicycle
+    VehicleKind.TRUCK -> R.string.vehicle_truck
+})
+
 private fun VehicleKind.icon(): ImageVector = when (this) {
     VehicleKind.CAR -> Icons.Filled.DirectionsCar
     VehicleKind.PEDESTRIAN -> Icons.AutoMirrored.Filled.DirectionsWalk
@@ -623,8 +637,8 @@ private fun TruckForm(vm: NavViewModel) {
         vm.setTruckDimensions(t(dim))
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        NumberField("Altezza (m)", dim.heightMeters) { v -> update { it.copy(heightMeters = v) } }
-        NumberField("Peso (kg)", dim.weightKg) { v -> update { it.copy(weightKg = v) } }
+        NumberField(stringResource(R.string.truck_height), dim.heightMeters) { v -> update { it.copy(heightMeters = v) } }
+        NumberField(stringResource(R.string.truck_weight), dim.weightKg) { v -> update { it.copy(weightKg = v) } }
     }
 }
 
@@ -659,19 +673,20 @@ private fun PoiCategoryBar(
     }
 }
 
-private fun PoiCategory.label(): String = when (this) {
-    PoiCategory.FUEL -> "Carburante"
-    PoiCategory.CHARGING -> "Ricarica"
-    PoiCategory.PARKING -> "Parcheggi"
-    PoiCategory.FOOD -> "Ristoro"
-    PoiCategory.SUPERMARKET -> "Market"
-    PoiCategory.ATM -> "Bancomat"
-    PoiCategory.PHARMACY -> "Farmacia"
-    PoiCategory.HOSPITAL -> "Ospedale"
-    PoiCategory.HOTEL -> "Hotel"
-    PoiCategory.TOILETS -> "Bagni"
-    PoiCategory.ATTRACTION -> "Attrazioni"
-}
+@Composable
+private fun PoiCategory.label(): String = stringResource(when (this) {
+    PoiCategory.FUEL -> R.string.poi_fuel
+    PoiCategory.CHARGING -> R.string.poi_charging
+    PoiCategory.PARKING -> R.string.poi_parking
+    PoiCategory.FOOD -> R.string.poi_food
+    PoiCategory.SUPERMARKET -> R.string.poi_supermarket
+    PoiCategory.ATM -> R.string.poi_atm
+    PoiCategory.PHARMACY -> R.string.poi_pharmacy
+    PoiCategory.HOSPITAL -> R.string.poi_hospital
+    PoiCategory.HOTEL -> R.string.poi_hotel
+    PoiCategory.TOILETS -> R.string.poi_toilets
+    PoiCategory.ATTRACTION -> R.string.poi_attraction
+})
 
 @Composable
 private fun Metric(value: String, label: String) {

@@ -41,6 +41,7 @@ private const val POSITION_HALO_LAYER = "position-halo"
 private const val POSITION_ICON = "position-arrow"
 private const val POI_SOURCE = "poi-source"
 private const val POI_LAYER = "poi-layer"
+private const val POI_ICON = "poi-pin"
 private const val POI_PROP_LABEL = "label"
 private const val POI_PROP_ID = "id"
 
@@ -265,16 +266,50 @@ private fun setupLayers(style: Style, colors: EnaideColors) {
         )
     )
 
-    // Marker POI: pin a cerchio con etichetta. Sorgente vuota all'inizio.
+    // Marker POI: pin a goccia stile mappa. Sorgente vuota all'inizio.
     style.addSource(GeoJsonSource(POI_SOURCE))
+    style.addImage(POI_ICON, pinBitmap(AndroidColor.parseColor(colors.routeLineHex())))
     style.addLayer(
-        CircleLayer(POI_LAYER, POI_SOURCE).withProperties(
-            PropertyFactory.circleRadius(7.0f),
-            PropertyFactory.circleColor(colors.routeLineHex()),
-            PropertyFactory.circleStrokeColor("#FFFFFF"),
-            PropertyFactory.circleStrokeWidth(2.5f),
+        SymbolLayer(POI_LAYER, POI_SOURCE).withProperties(
+            PropertyFactory.iconImage(POI_ICON),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM), // punta in basso
+            PropertyFactory.iconSize(1.0f),
+            PropertyFactory.textField(get(POI_PROP_LABEL)),
+            PropertyFactory.textSize(11.0f),
+            PropertyFactory.textOffset(arrayOf(0.0f, 0.6f)),
+            PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+            PropertyFactory.textOptional(true),
+            PropertyFactory.textHaloColor("#FFFFFF"),
+            PropertyFactory.textHaloWidth(1.5f),
+            PropertyFactory.textMaxWidth(8.0f),
         )
     )
+}
+
+/** Pin a goccia (stile mappa) disegnato a runtime, colore [argb]. */
+private fun pinBitmap(argb: Int): Bitmap {
+    val w = 48; val h = 64
+    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = argb; style = Paint.Style.FILL }
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE; style = Paint.Style.STROKE; strokeWidth = 3f
+    }
+    // Goccia: cerchio in alto + punta in basso.
+    val cx = w / 2f; val cy = w / 2f; val r = w / 2.6f
+    val path = Path().apply {
+        addCircle(cx, cy, r, Path.Direction.CW)
+        moveTo(cx - r * 0.6f, cy + r * 0.6f)
+        lineTo(cx, h.toFloat() - 2f)
+        lineTo(cx + r * 0.6f, cy + r * 0.6f)
+        close()
+    }
+    canvas.drawPath(path, fill)
+    canvas.drawPath(path, stroke)
+    // Pallino bianco centrale.
+    canvas.drawCircle(cx, cy, r * 0.4f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.WHITE })
+    return bmp
 }
 
 /** Popola/aggiorna la polilinea del percorso. */
