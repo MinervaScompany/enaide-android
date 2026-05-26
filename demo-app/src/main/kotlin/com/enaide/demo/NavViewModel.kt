@@ -15,6 +15,10 @@ import com.enaide.sdk.model.Route
 import com.enaide.sdk.routing.RouteResult
 import com.enaide.sdk.routing.RoutingError
 import com.enaide.sdk.model.VehicleDimensions
+import com.enaide.sdk.poi.OverpassPoiProvider
+import com.enaide.sdk.poi.Poi
+import com.enaide.sdk.poi.PoiCategory
+import com.enaide.sdk.poi.PoiResult
 import com.enaide.sdk.simulation.SimulatedLocationSource
 import com.enaide.sdk.simulation.WrongTurn
 import com.enaide.sdk.vehicle.VehicleKind
@@ -54,6 +58,9 @@ internal enum class LocationMode { GPS, SIMULATED }
 /** Tab della bottom bar. NAV appare solo quando la navigazione è attiva. */
 internal enum class AppTab { MAP, NAV, SETTINGS }
 
+/** Id stabile di un POI a partire dalle sue coordinate (per il match del marker). */
+internal fun GeoPoint.poiId(): String = "%.6f,%.6f".format(latitude, longitude)
+
 /**
  * Orchestratore della demo: tiene insieme tutto l'SDK enaide — geocoding
  * (Nominatim), routing (Valhalla), motore di navigazione, bus di eventi — e la
@@ -72,6 +79,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     )
     private val navigator: EnaideNavigator = EnaideNavigator.create(config)
     private val geocoder = NominatimGeocodingClient(config)
+    private val poiProvider = OverpassPoiProvider(config)
     private val gpsSource = GpsLocationSource(app)
 
     /** Stato live della navigazione esposto dall'SDK. */
@@ -155,6 +163,49 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val _tab = MutableStateFlow(AppTab.MAP)
     val tab: StateFlow<AppTab> = _tab.asStateFlow()
     fun selectTab(t: AppTab) { _tab.value = t }
+
+    // --- POI -----------------------------------------------------------------
+
+    /** Categoria POI attiva (null = nessuna, marker nascosti). */
+    private val _poiCategory = MutableStateFlow<PoiCategory?>(null)
+    val poiCategory: StateFlow<PoiCategory?> = _poiCategory.asStateFlow()
+
+    /** POI correntemente mostrati sulla mappa. */
+    private val _pois = MutableStateFlow<List<Poi>>(emptyList())
+    val pois: StateFlow<List<Poi>> = _pois.asStateFlow()
+
+    /**
+     * Mostra/nasconde i POI di una categoria. Cerca "vicino" sulla mappa libera,
+     * "lungo il percorso" in anteprima/guida (se c'è un route attivo).
+     */
+    fun togglePoiCategory(category: PoiCategory) {
+        if (_poiCategory.value == category) {
+            _poiCategory.value = null
+            _pois.value = emptyList()
+            return
+        }
+        _poiCategory.value = category
+        viewModelScope.launch {
+            _busy.value = true
+            val activeRoute = (_screen.value as? Screen.Preview)?.route
+                ?: (navState.value as? NavigationState.Navigating)?.route
+            val result = if (activeRoute != null) {
+                poiProvider.alongRoute(activeRoute, category)
+            } else {
+                val center = _currentPosition.value ?: DEFAULT_ORIGIN
+                poiProvider.nearby(center, category)
+            }
+            _pois.value = (result as? PoiResult.Success)?.pois ?: emptyList()
+            if (result is PoiResult.Failure) _planningMessage.value = "POI non disponibili al momento."
+            _busy.value = false
+        }
+    }
+
+    /** Naviga verso un POI (tap sul marker). */
+    fun navigateToPoi(poiId: String) {
+        val poi = _pois.value.firstOrNull { it.point.poiId() == poiId } ?: return
+        planTo(GeocodedPlace(poi.point, poi.name ?: "POI"))
+    }
 
     /** Tipo di mezzo scelto (auto/piedi/bici/camion). */
     private val _vehicleKind = MutableStateFlow(VehicleKind.CAR)

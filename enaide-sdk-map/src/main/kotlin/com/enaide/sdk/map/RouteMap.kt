@@ -39,6 +39,24 @@ private const val POSITION_SOURCE = "position-source"
 private const val POSITION_LAYER = "position-layer"
 private const val POSITION_HALO_LAYER = "position-halo"
 private const val POSITION_ICON = "position-arrow"
+private const val POI_SOURCE = "poi-source"
+private const val POI_LAYER = "poi-layer"
+private const val POI_PROP_LABEL = "label"
+private const val POI_PROP_ID = "id"
+
+/**
+ * Marker generico da disegnare sulla mappa (es. un POI). Tipo neutro: il modulo
+ * map non dipende dal modulo poi, così resta indipendente.
+ *
+ * @property id identificatore stabile (per il tap).
+ * @property point coordinate.
+ * @property label etichetta mostrata/usata al tap.
+ */
+public data class MapMarker(
+    public val id: String,
+    public val point: GeoPoint,
+    public val label: String,
+)
 
 /** Zoom e tilt della camera in modalità guida 3D. */
 private const val DRIVE_ZOOM = 17.5
@@ -86,6 +104,8 @@ fun RouteMap(
     threeD: Boolean = false,
     cameraState: MapCameraState? = null,
     onLongPress: ((GeoPoint) -> Unit)? = null,
+    markers: List<MapMarker> = emptyList(),
+    onMarkerClick: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     remember { MapLibre.getInstance(context) }
@@ -93,8 +113,9 @@ fun RouteMap(
     val colors = EnaideTheme.colors
     val mapView = remember { MapView(context) }
     val holder = remember { MapHolder() }
-    // Callback long-press aggiornabile senza ricreare la mappa.
+    // Callback aggiornabili senza ricreare la mappa.
     holder.onLongPress = onLongPress
+    holder.onMarkerClick = onMarkerClick
 
     DisposableEffect(Unit) {
         mapView.onCreate(null)
@@ -126,6 +147,13 @@ fun RouteMap(
                 holder.onLongPress?.invoke(GeoPoint(latLng.latitude, latLng.longitude))
                 true
             }
+            // Tap su un marker POI = apri/naviga.
+            map.addOnMapClickListener { latLng ->
+                val pt = map.projection.toScreenLocation(latLng)
+                val hits = map.queryRenderedFeatures(pt, POI_LAYER)
+                val id = hits.firstOrNull()?.getStringProperty(POI_PROP_ID)
+                if (id != null) { holder.onMarkerClick?.invoke(id); true } else false
+            }
         }
         cameraState?.onRecenter = {
             val map = holder.map
@@ -143,6 +171,15 @@ fun RouteMap(
         val map = holder.map
         if (map != null && holder.styleReady) {
             map.style?.let { style -> route?.let { setRouteGeometry(style, it) } }
+        }
+        onDispose { }
+    }
+
+    // Aggiorna i marker POI quando cambiano.
+    DisposableEffect(markers) {
+        val map = holder.map
+        if (map != null && holder.styleReady) {
+            map.style?.let { setMarkers(it, markers) }
         }
         onDispose { }
     }
@@ -166,6 +203,7 @@ private class MapHolder {
     var map: MapLibreMap? = null
     var styleReady: Boolean = false
     var onLongPress: ((GeoPoint) -> Unit)? = null
+    var onMarkerClick: ((String) -> Unit)? = null
 }
 
 private fun animateDriveCamera(map: MapLibreMap, position: GeoPoint, bearing: Double?, threeD: Boolean) {
@@ -226,6 +264,17 @@ private fun setupLayers(style: Style, colors: EnaideColors) {
             PropertyFactory.iconRotate(get("bearing")),
         )
     )
+
+    // Marker POI: pin a cerchio con etichetta. Sorgente vuota all'inizio.
+    style.addSource(GeoJsonSource(POI_SOURCE))
+    style.addLayer(
+        CircleLayer(POI_LAYER, POI_SOURCE).withProperties(
+            PropertyFactory.circleRadius(7.0f),
+            PropertyFactory.circleColor(colors.routeLineHex()),
+            PropertyFactory.circleStrokeColor("#FFFFFF"),
+            PropertyFactory.circleStrokeWidth(2.5f),
+        )
+    )
 }
 
 /** Popola/aggiorna la polilinea del percorso. */
@@ -233,6 +282,18 @@ private fun setRouteGeometry(style: Style, route: Route) {
     val source = style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE) ?: return
     val points = route.geometry.map { Point.fromLngLat(it.longitude, it.latitude) }
     source.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(points)))
+}
+
+/** Popola/aggiorna i marker POI. */
+private fun setMarkers(style: Style, markers: List<MapMarker>) {
+    val source = style.getSourceAs<GeoJsonSource>(POI_SOURCE) ?: return
+    val features = markers.map { m ->
+        Feature.fromGeometry(Point.fromLngLat(m.point.longitude, m.point.latitude)).apply {
+            addStringProperty(POI_PROP_ID, m.id)
+            addStringProperty(POI_PROP_LABEL, m.label)
+        }
+    }
+    source.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(features))
 }
 
 /** Freccia/chevron nera puntata verso l'alto (0° = nord), disegnata a runtime. */

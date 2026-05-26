@@ -27,6 +27,7 @@ import kotlin.time.Duration.Companion.seconds
 public data class EnaideConfig(
     public val routingBaseUrl: String = DEFAULT_ROUTING_BASE_URL,
     public val nominatimBaseUrl: String = DEFAULT_NOMINATIM_BASE_URL,
+    public val overpassBaseUrl: String = DEFAULT_OVERPASS_BASE_URL,
     public val userAgent: String = DEFAULT_USER_AGENT,
     public val requestTimeout: Duration = 15.seconds,
     public val defaultProfile: com.enaide.sdk.model.TransportProfile = com.enaide.sdk.model.TransportProfile.AUTO,
@@ -36,6 +37,7 @@ public data class EnaideConfig(
     public companion object {
         public const val DEFAULT_ROUTING_BASE_URL: String = "https://valhalla1.openstreetmap.de"
         public const val DEFAULT_NOMINATIM_BASE_URL: String = "https://nominatim.openstreetmap.org"
+        public const val DEFAULT_OVERPASS_BASE_URL: String = "https://overpass-api.de"
         public const val DEFAULT_USER_AGENT: String = "enaide-sdk/0.1 (+https://enaide.example/contact)"
     }
 }

@@ -38,6 +38,7 @@ dependencies {
     implementation(project(":enaide-sdk-map"))
     implementation(project(":enaide-sdk-tts"))
     implementation(project(":enaide-sdk-vehicle"))
+    implementation(project(":enaide-sdk-poi"))
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.core.ktx)

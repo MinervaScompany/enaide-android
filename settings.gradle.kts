@@ -34,5 +34,6 @@ include(":enaide-sdk-simulation")
 include(":enaide-sdk-map")
 include(":enaide-sdk-tts")
 include(":enaide-sdk-vehicle")
+include(":enaide-sdk-poi")
 
 include(":demo-app")

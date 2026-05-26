@@ -82,7 +82,9 @@ import com.enaide.sdk.format.UnitFormatter
 import com.enaide.sdk.geocoding.GeocodedPlace
 import com.enaide.sdk.map.EnaideTheme
 import com.enaide.sdk.map.MapCameraState
+import com.enaide.sdk.map.MapMarker
 import com.enaide.sdk.map.RouteMap
+import com.enaide.sdk.poi.PoiCategory
 import com.enaide.sdk.model.Deviation
 import com.enaide.sdk.model.NavigationEvent
 import com.enaide.sdk.model.NavigationState
@@ -203,9 +205,17 @@ private fun MapScreen(vm: NavViewModel) {
     val results by vm.searchResults.collectAsState()
     val busy by vm.busy.collectAsState()
     val message by vm.planningMessage.collectAsState()
+    val pois by vm.pois.collectAsState()
+    val poiCategory by vm.poiCategory.collectAsState()
+    val navState by vm.navState.collectAsState()
     val cameraState = remember { MapCameraState() }
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
+
+    // Se in navigazione, mostriamo il tragitto anche sulla mappa libera, così si
+    // possono fare modifiche (es. cercare POI lungo il percorso) da qui.
+    val activeRoute = (navState as? NavigationState.Navigating)?.route
+    val markers = pois.map { MapMarker(it.point.poiId(), it.point, it.name ?: "POI") }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -222,14 +232,16 @@ private fun MapScreen(vm: NavViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
-        // Mappa edge-to-edge: riempie tutto lo schermo, anche dietro la bottom bar.
+        // Mappa edge-to-edge. route = il tragitto attivo se in navigazione.
         RouteMap(
-            route = null,
+            route = activeRoute,
             position = position,
             bearing = bearing,
             threeD = false,
             cameraState = cameraState,
             onLongPress = { vm.selectPointOnMap(it) },
+            markers = markers,
+            onMarkerClick = { vm.navigateToPoi(it) },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -237,6 +249,13 @@ private fun MapScreen(vm: NavViewModel) {
             onClick = { locate() },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = "La mia posizione") }
+
+        // Riga di chip categorie POI, sotto la search bar.
+        PoiCategoryBar(
+            selected = poiCategory,
+            onPick = { vm.togglePoiCategory(it) },
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 16.dp),
+        )
 
         var expanded by remember { mutableStateOf(false) }
         SearchBar(
@@ -618,6 +637,40 @@ private fun androidx.compose.foundation.layout.RowScope.NumberField(
         value = text, onValueChange = { text = it; onValue(it.toDoubleOrNull()) },
         label = { Text(label) }, singleLine = true, modifier = Modifier.weight(1f),
     )
+}
+
+@Composable
+private fun PoiCategoryBar(
+    selected: PoiCategory?,
+    onPick: (PoiCategory) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.foundation.lazy.LazyRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(PoiCategory.entries) { cat ->
+            FilterChip(
+                selected = selected == cat,
+                onClick = { onPick(cat) },
+                label = { Text(cat.label()) },
+            )
+        }
+    }
+}
+
+private fun PoiCategory.label(): String = when (this) {
+    PoiCategory.FUEL -> "Carburante"
+    PoiCategory.CHARGING -> "Ricarica"
+    PoiCategory.PARKING -> "Parcheggi"
+    PoiCategory.FOOD -> "Ristoro"
+    PoiCategory.SUPERMARKET -> "Market"
+    PoiCategory.ATM -> "Bancomat"
+    PoiCategory.PHARMACY -> "Farmacia"
+    PoiCategory.HOSPITAL -> "Ospedale"
+    PoiCategory.HOTEL -> "Hotel"
+    PoiCategory.TOILETS -> "Bagni"
+    PoiCategory.ATTRACTION -> "Attrazioni"
 }
 
 @Composable
