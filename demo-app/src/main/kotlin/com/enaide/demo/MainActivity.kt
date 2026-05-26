@@ -172,6 +172,8 @@ private fun AppShell(vm: NavViewModel) {
             }
         }
     ) { padding ->
+        // Un solo punto in cui applichiamo il padding dello Scaffold: il container.
+        // Le schermate dentro usano fillMaxSize senza padding manuali.
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
                 AppTab.MAP -> MapTab(vm)
@@ -220,6 +222,7 @@ private fun MapScreen(vm: NavViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // Mappa edge-to-edge: riempie tutto lo schermo, anche dietro la bottom bar.
         RouteMap(
             route = null,
             position = position,
@@ -234,8 +237,6 @@ private fun MapScreen(vm: NavViewModel) {
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = "La mia posizione") }
 
-        // SearchBar nativa Material 3: in espansione mostra i risultati nel suo
-        // contenitore standard (niente Surface/forme custom).
         var expanded by remember { mutableStateOf(false) }
         SearchBar(
             modifier = Modifier.align(Alignment.TopCenter),
