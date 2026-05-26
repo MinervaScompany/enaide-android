@@ -1,0 +1,256 @@
+package com.enaide.sdk.map
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Color as AndroidColor
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import com.enaide.sdk.model.GeoPoint
+import com.enaide.sdk.model.Route
+import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
+
+private const val ROUTE_SOURCE = "route-source"
+private const val ROUTE_CASING_LAYER = "route-casing"
+private const val ROUTE_LAYER = "route-layer"
+private const val POSITION_SOURCE = "position-source"
+private const val POSITION_LAYER = "position-layer"
+private const val POSITION_HALO_LAYER = "position-halo"
+private const val POSITION_ICON = "position-arrow"
+
+/** Zoom e tilt della camera in modalità guida 3D. */
+private const val DRIVE_ZOOM = 17.5
+private const val DRIVE_TILT = 55.0 // gradi di inclinazione (0 = dall'alto, 60 = molto prospettico)
+
+/**
+ * Stato della camera controllabile dall'esterno (es. FAB "ricentra").
+ *
+ * Tiene un flag [followMode]: in guida la camera insegue la posizione; quando
+ * l'utente tocca/trascina la mappa il follow si disattiva e la mappa resta dove
+ * l'ha lasciata l'utente, finché non chiama [recenter].
+ */
+class MapCameraState {
+    internal var followMode: Boolean = true
+    internal var onRecenter: (() -> Unit)? = null
+
+    /** Riattiva l'inseguimento e ricentra sulla posizione corrente. */
+    fun recenter() {
+        followMode = true
+        onRecenter?.invoke()
+    }
+}
+
+/**
+ * Vista mappa MapLibre, usabile sia per la **guida** sia come **mappa libera**.
+ *
+ * @param route percorso da disegnare; `null` = solo mappa (es. schermata iniziale).
+ * @param position posizione corrente dell'utente (puntino + camera che segue).
+ * @param bearing direzione di moto in gradi; null = nord.
+ * @param threeD camera prospettica 3D che segue il bearing (modalità guida).
+ * @param cameraState aggancio per il controllo esterno (ricentra / follow-mode).
+ *
+ * Interazioni: pan/zoom/rotate/tilt con le dita; al primo gesto la camera smette
+ * di inseguire e si riattiva via [MapCameraState.recenter].
+ */
+@Composable
+fun RouteMap(
+    route: Route?,
+    position: GeoPoint?,
+    modifier: Modifier = Modifier,
+    bearing: Double? = null,
+    threeD: Boolean = false,
+    cameraState: MapCameraState? = null,
+) {
+    val context = LocalContext.current
+    remember { MapLibre.getInstance(context) }
+
+    val colors = EnaideTheme.colors
+    val mapView = remember { MapView(context) }
+    val holder = remember { MapHolder() }
+
+    DisposableEffect(Unit) {
+        mapView.onCreate(null)
+        mapView.onStart()
+        mapView.onResume()
+        mapView.getMapAsync { map ->
+            holder.map = map
+            map.setStyle(Style.Builder().fromUri("asset://osm_raster_style.json")) { style ->
+                setupLayers(style, colors)
+                holder.styleReady = true
+                route?.let {
+                    setRouteGeometry(style, it)
+                    if (position == null) fitToRoute(map, it)
+                }
+                position?.let { updatePosition(style, it, bearing) }
+            }
+            map.addOnCameraMoveStartedListener { reason ->
+                if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
+                    cameraState?.followMode = false
+                }
+            }
+        }
+        cameraState?.onRecenter = {
+            val map = holder.map
+            val pos = position
+            if (map != null && pos != null) animateDriveCamera(map, pos, bearing, threeD)
+        }
+        onDispose {
+            cameraState?.onRecenter = null
+            mapView.onPause(); mapView.onStop(); mapView.onDestroy()
+        }
+    }
+
+    // Aggiorna la geometria del route quando cambia (es. dopo un reroute).
+    DisposableEffect(route?.id) {
+        val map = holder.map
+        if (map != null && holder.styleReady) {
+            map.style?.let { style -> route?.let { setRouteGeometry(style, it) } }
+        }
+        onDispose { }
+    }
+
+    // Aggiorna marker + camera a ogni nuovo fix (solo se in follow-mode).
+    DisposableEffect(position, bearing) {
+        val map = holder.map
+        if (position != null && map != null && holder.styleReady) {
+            map.style?.let { updatePosition(it, position, bearing) }
+            if (cameraState?.followMode != false) {
+                animateDriveCamera(map, position, bearing, threeD)
+            }
+        }
+        onDispose { }
+    }
+
+    AndroidView(factory = { mapView }, modifier = modifier)
+}
+
+private class MapHolder {
+    var map: MapLibreMap? = null
+    var styleReady: Boolean = false
+}
+
+private fun animateDriveCamera(map: MapLibreMap, position: GeoPoint, bearing: Double?, threeD: Boolean) {
+    // Centriamo SEMPRE sulla posizione utente. In 3D spostiamo il punto di vista
+    // verso il basso (padding) cosi' l'utente sta nel terzo inferiore e si vede la
+    // strada davanti — vista da navigatore.
+    val h = map.height
+    val builder = CameraPosition.Builder()
+        .target(LatLng(position.latitude, position.longitude))
+        .zoom(if (threeD) DRIVE_ZOOM else 16.0)
+        .tilt(if (threeD) DRIVE_TILT else 0.0)
+        .bearing(if (threeD) (bearing ?: 0.0) else 0.0)
+    if (threeD && h > 0) {
+        // padding (left, top, right, bottom): top alto spinge il target in basso.
+        builder.padding(doubleArrayOf(0.0, h * 0.45, 0.0, 0.0))
+    }
+    map.animateCamera(CameraUpdateFactory.newCameraPosition(builder.build()), 600)
+}
+
+/** Crea sorgenti e layer (route + posizione) UNA volta, anche senza dati ancora. */
+private fun setupLayers(style: Style, colors: EnaideColors) {
+    // Sorgente route vuota: popolata da setRouteGeometry quando c'è un percorso.
+    style.addSource(GeoJsonSource(ROUTE_SOURCE))
+    style.addLayer(
+        LineLayer(ROUTE_CASING_LAYER, ROUTE_SOURCE).withProperties(
+            PropertyFactory.lineColor(colors.routeCasingHex()),
+            PropertyFactory.lineWidth(11.0f),
+            PropertyFactory.lineCap("round"),
+            PropertyFactory.lineJoin("round"),
+        )
+    )
+    style.addLayer(
+        LineLayer(ROUTE_LAYER, ROUTE_SOURCE).withProperties(
+            PropertyFactory.lineColor(colors.routeLineHex()),
+            PropertyFactory.lineWidth(7.0f),
+            PropertyFactory.lineCap("round"),
+            PropertyFactory.lineJoin("round"),
+        )
+    )
+
+    // Marker posizione: alone + freccia direzionale.
+    style.addSource(GeoJsonSource(POSITION_SOURCE))
+    style.addLayer(
+        CircleLayer(POSITION_HALO_LAYER, POSITION_SOURCE).withProperties(
+            PropertyFactory.circleRadius(22.0f),
+            PropertyFactory.circleColor(colors.positionHaloHex()),
+            PropertyFactory.circleOpacity(0.18f),
+        )
+    )
+    style.addImage(POSITION_ICON, arrowBitmap())
+    style.addLayer(
+        SymbolLayer(POSITION_LAYER, POSITION_SOURCE).withProperties(
+            PropertyFactory.iconImage(POSITION_ICON),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.iconSize(1.0f),
+            PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+            PropertyFactory.iconRotate(get("bearing")),
+        )
+    )
+}
+
+/** Popola/aggiorna la polilinea del percorso. */
+private fun setRouteGeometry(style: Style, route: Route) {
+    val source = style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE) ?: return
+    val points = route.geometry.map { Point.fromLngLat(it.longitude, it.latitude) }
+    source.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(points)))
+}
+
+/** Freccia/chevron nera puntata verso l'alto (0° = nord), disegnata a runtime. */
+private fun arrowBitmap(): Bitmap {
+    val size = 72
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val path = Path().apply {
+        moveTo(size / 2f, size * 0.12f)        // punta in alto
+        lineTo(size * 0.82f, size * 0.86f)     // base destra
+        lineTo(size / 2f, size * 0.66f)        // incavo centrale
+        lineTo(size * 0.18f, size * 0.86f)     // base sinistra
+        close()
+    }
+    // Bordo bianco sotto, riempimento scuro sopra: leggibile su qualsiasi mappa.
+    canvas.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 8f; color = AndroidColor.WHITE
+        strokeJoin = Paint.Join.ROUND
+    })
+    canvas.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = AndroidColor.parseColor("#1A1A1A")
+    })
+    return bmp
+}
+
+private fun updatePosition(style: Style, position: GeoPoint, bearing: Double?) {
+    val source = style.getSourceAs<GeoJsonSource>(POSITION_SOURCE) ?: return
+    val feature = Feature.fromGeometry(Point.fromLngLat(position.longitude, position.latitude))
+    feature.addNumberProperty("bearing", bearing ?: 0.0)
+    source.setGeoJson(feature)
+}
+
+private fun fitToRoute(map: MapLibreMap, route: Route) {
+    if (route.geometry.size < 2) return
+    val builder = LatLngBounds.Builder()
+    route.geometry.forEach { builder.include(LatLng(it.latitude, it.longitude)) }
+    map.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 80))
+}

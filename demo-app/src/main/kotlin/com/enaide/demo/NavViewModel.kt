@@ -1,0 +1,409 @@
+package com.enaide.demo
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.enaide.sdk.EnaideConfig
+import com.enaide.sdk.EnaideNavigator
+import com.enaide.sdk.geocoding.GeocodeResult
+import com.enaide.sdk.geocoding.GeocodedPlace
+import com.enaide.sdk.geocoding.NominatimGeocodingClient
+import com.enaide.sdk.model.GeoPoint
+import com.enaide.sdk.model.NavigationEvent
+import com.enaide.sdk.model.NavigationState
+import com.enaide.sdk.model.Route
+import com.enaide.sdk.routing.RouteResult
+import com.enaide.sdk.routing.RoutingError
+import com.enaide.sdk.model.VehicleDimensions
+import com.enaide.sdk.simulation.SimulatedLocationSource
+import com.enaide.sdk.simulation.WrongTurn
+import com.enaide.sdk.vehicle.VehicleKind
+import com.enaide.sdk.vehicle.VehicleProfile
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/**
+ * Fasi della UI del navigatore demo.
+ */
+internal sealed interface Screen {
+    /** Mappa libera (schermata iniziale): l'utente vede la mappa e cerca la destinazione. */
+    data object Map : Screen
+
+    /** Anteprima del percorso calcolato, pronto a partire. */
+    data class Preview(
+        val route: Route,
+        val originLabel: String,
+        val destinationLabel: String,
+    ) : Screen
+
+    /** Guida attiva: lo stato live arriva da [NavViewModel.navState]. */
+    data class Driving(
+        val originLabel: String,
+        val destinationLabel: String,
+    ) : Screen
+}
+
+/** Sorgente dei fix di posizione durante la guida. */
+internal enum class LocationMode { GPS, SIMULATED }
+
+/** Tab della bottom bar. NAV appare solo quando la navigazione è attiva. */
+internal enum class AppTab { MAP, NAV, SETTINGS }
+
+/**
+ * Orchestratore della demo: tiene insieme tutto l'SDK enaide — geocoding
+ * (Nominatim), routing (Valhalla), motore di navigazione, bus di eventi — e la
+ * sorgente di posizione (GPS reale via [GpsLocationSource] o [SimulatedLocationSource]).
+ *
+ * Architettura disaccoppiata: la UI osserva [navState] (stato) mentre azioni
+ * collaterali (TTS, log) si agganciano a [events] (eventi discreti dell'SDK). In
+ * un'app reale basta sostituire la sorgente di posizione: il resto non cambia.
+ */
+internal class NavViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val config = EnaideConfig(
+        // Cambia con un contatto reale prima di pubblicare: Nominatim e Valhalla
+        // pubblici richiedono uno User-Agent identificativo.
+        userAgent = "enaide-demo/0.3 (+https://enaide.example/contact)",
+    )
+    private val navigator: EnaideNavigator = EnaideNavigator.create(config)
+    private val geocoder = NominatimGeocodingClient(config)
+    private val gpsSource = GpsLocationSource(app)
+
+    /** Stato live della navigazione esposto dall'SDK. */
+    val navState: StateFlow<NavigationState> = navigator.state
+
+    /** Bus di eventi discreti dell'SDK: lo espone alla UI per agganciare TTS & co. */
+    val events: SharedFlow<NavigationEvent> = navigator.events
+
+    private val _screen = MutableStateFlow<Screen>(Screen.Map)
+    val screen: StateFlow<Screen> = _screen.asStateFlow()
+
+    /** Destinazione in anteprima, per i risultati di ricerca dalla mappa. */
+    private val _searchResults = MutableStateFlow<List<GeocodedPlace>>(emptyList())
+    val searchResults: StateFlow<List<GeocodedPlace>> = _searchResults.asStateFlow()
+
+    /** Job del GPS "live" attivo sulla schermata mappa (mostra l'utente in tempo reale). */
+    private var liveGpsJob: Job? = null
+
+    /** Messaggio di stato/errore mostrato in fase di planning. `null` = nessuno. */
+    private val _planningMessage = MutableStateFlow<String?>(null)
+    val planningMessage: StateFlow<String?> = _planningMessage.asStateFlow()
+
+    /** True mentre geocoding+routing sono in corso (mostra spinner, disabilita bottone). */
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    /** Modalita' sorgente posizione scelta dall'utente. */
+    private val _locationMode = MutableStateFlow(LocationMode.SIMULATED)
+    val locationMode: StateFlow<LocationMode> = _locationMode.asStateFlow()
+
+    /** Se true, la simulazione "sbaglia strada" per testare il reroute. */
+    private val _simulateWrongTurn = MutableStateFlow(false)
+    val simulateWrongTurn: StateFlow<Boolean> = _simulateWrongTurn.asStateFlow()
+
+    fun setSimulateWrongTurn(enabled: Boolean) { _simulateWrongTurn.value = enabled }
+
+    // --- Impostazioni utente -------------------------------------------------
+
+    /** Guida vocale TTS attiva. */
+    private val _voiceEnabled = MutableStateFlow(true)
+    val voiceEnabled: StateFlow<Boolean> = _voiceEnabled.asStateFlow()
+    fun setVoiceEnabled(on: Boolean) { _voiceEnabled.value = on }
+
+    /** Endpoint configurati (sola lettura nella demo: cambiarli richiede riavvio). */
+    val routingEndpoint: String get() = config.routingBaseUrl
+    val geocodingEndpoint: String get() = config.nominatimBaseUrl
+
+    /** Tab correntemente selezionata. */
+    private val _tab = MutableStateFlow(AppTab.MAP)
+    val tab: StateFlow<AppTab> = _tab.asStateFlow()
+    fun selectTab(t: AppTab) { _tab.value = t }
+
+    /** Tipo di mezzo scelto (auto/piedi/bici/camion). */
+    private val _vehicleKind = MutableStateFlow(VehicleKind.CAR)
+    val vehicleKind: StateFlow<VehicleKind> = _vehicleKind.asStateFlow()
+
+    /** Sagoma camion (usata solo se [vehicleKind] == TRUCK). */
+    private val _truckDimensions = MutableStateFlow(VehicleProfile.DefaultTruck)
+    val truckDimensions: StateFlow<VehicleDimensions> = _truckDimensions.asStateFlow()
+
+    fun setVehicleKind(kind: VehicleKind) { _vehicleKind.value = kind }
+    fun setTruckDimensions(dim: VehicleDimensions) { _truckDimensions.value = dim }
+
+    /** Velocità di crociera tipica per la simulazione, per tipo di mezzo. */
+    private fun cruiseKmhFor(kind: VehicleKind): Double = when (kind) {
+        VehicleKind.CAR -> 50.0
+        VehicleKind.TRUCK -> 45.0
+        VehicleKind.BICYCLE -> 18.0
+        VehicleKind.PEDESTRIAN -> 5.0
+    }
+
+    private fun currentVehicleProfile(): VehicleProfile = when (_vehicleKind.value) {
+        VehicleKind.CAR -> VehicleProfile.car()
+        VehicleKind.PEDESTRIAN -> VehicleProfile.pedestrian()
+        VehicleKind.BICYCLE -> VehicleProfile.bicycle()
+        VehicleKind.TRUCK -> VehicleProfile.truck(_truckDimensions.value)
+    }
+
+    /** Posizione corrente (snapped) per la mappa; `null` fuori dalla guida. */
+    private val _currentPosition = MutableStateFlow<GeoPoint?>(null)
+    val currentPosition: StateFlow<GeoPoint?> = _currentPosition.asStateFlow()
+
+    /** Direzione di moto corrente in gradi (per orientare la camera 3D); `null` se ignota. */
+    private val _currentBearing = MutableStateFlow<Double?>(null)
+    val currentBearing: StateFlow<Double?> = _currentBearing.asStateFlow()
+
+    /** Velocità corrente in m/s (dal fix di posizione); UnitFormatter la converte in km/h. */
+    private val _currentSpeedMps = MutableStateFlow(0.0)
+    val currentSpeedMps: StateFlow<Double> = _currentSpeedMps.asStateFlow()
+
+    private var locationJob: Job? = null
+
+    fun setLocationMode(mode: LocationMode) {
+        _locationMode.value = mode
+    }
+
+    /**
+     * Geocodifica i due input, calcola il percorso e passa a [Screen.Preview].
+     * Accetta sia indirizzi liberi (forward geocoding) sia coordinate `lat,lon`.
+     */
+    fun planRoute(originInput: String, destinationInput: String) {
+        if (_busy.value) return
+        viewModelScope.launch {
+            _busy.value = true
+            _planningMessage.value = "Cerco l'origine…"
+            val origin = resolve(originInput)
+            if (origin == null) {
+                _planningMessage.value = "Origine non trovata: \"$originInput\""
+                _busy.value = false
+                return@launch
+            }
+
+            _planningMessage.value = "Cerco la destinazione…"
+            val dest = resolve(destinationInput)
+            if (dest == null) {
+                _planningMessage.value = "Destinazione non trovata: \"$destinationInput\""
+                _busy.value = false
+                return@launch
+            }
+
+            _planningMessage.value = "Calcolo il percorso…"
+            val vehicle = currentVehicleProfile()
+            when (val result = navigator.computeRoute(
+                waypoints = listOf(origin.point, dest.point),
+                profile = vehicle.toProfile(),
+                options = vehicle.toRouteOptions(),
+            )) {
+                is RouteResult.Success -> {
+                    _planningMessage.value = null
+                    _screen.value = Screen.Preview(
+                        route = result.route,
+                        originLabel = origin.displayName,
+                        destinationLabel = dest.displayName,
+                    )
+                }
+                is RouteResult.Failure -> {
+                    _planningMessage.value = describeRoutingError(result.error, origin, dest)
+                }
+            }
+            _busy.value = false
+        }
+    }
+
+    /**
+     * Avvia la guida lungo il percorso in anteprima e collega la sorgente di
+     * posizione scelta. Con [LocationMode.GPS] usa il GPS reale (il permesso deve
+     * essere gia' concesso); con [LocationMode.SIMULATED] usa il simulatore.
+     */
+    init {
+        // Reroute event-centric col simulatore: quando l'SDK emette un nuovo
+        // Started (dopo un ricalcolo) mentre stiamo guidando in simulazione, si
+        // riaggancia la sorgente al NUOVO percorso (senza ripetere l'errore).
+        viewModelScope.launch {
+            navigator.events.collect { e ->
+                if (e is NavigationEvent.Started &&
+                    _screen.value is Screen.Driving &&
+                    _locationMode.value == LocationMode.SIMULATED &&
+                    locationJob?.isActive != true
+                ) {
+                    driveSimulated(e.route, withError = false)
+                }
+            }
+        }
+    }
+
+    fun startDriving() {
+        val preview = _screen.value as? Screen.Preview ?: return
+        stopLiveLocation() // la guida usa la propria sorgente
+        navigator.start(preview.route)
+        _screen.value = Screen.Driving(preview.originLabel, preview.destinationLabel)
+        _tab.value = AppTab.NAV
+
+        locationJob?.cancel()
+        locationJob = viewModelScope.launch {
+            val flow = when (_locationMode.value) {
+                LocationMode.GPS -> gpsSource.asFlow()
+                LocationMode.SIMULATED -> SimulatedLocationSource.realistic(
+                    route = preview.route,
+                    cruiseKmh = cruiseKmhFor(_vehicleKind.value),
+                    wrongTurn = if (_simulateWrongTurn.value) WrongTurn() else null,
+                ).asFlow()
+            }
+            flow.collect { fix -> pushFix(fix) }
+        }
+    }
+
+    /** (Ri)avvia la sorgente simulata su [route] — usato dopo un reroute. */
+    private fun driveSimulated(route: com.enaide.sdk.model.Route, withError: Boolean) {
+        locationJob?.cancel()
+        locationJob = viewModelScope.launch {
+            SimulatedLocationSource.realistic(
+                route = route,
+                cruiseKmh = cruiseKmhFor(_vehicleKind.value),
+                wrongTurn = if (withError) WrongTurn() else null,
+            ).asFlow().collect { fix -> pushFix(fix) }
+        }
+    }
+
+    private fun pushFix(fix: com.enaide.sdk.model.UserLocation) {
+        _currentPosition.value = fix.point
+        fix.courseDegrees?.let { _currentBearing.value = it }
+        _currentSpeedMps.value = fix.speedMetersPerSecond ?: 0.0
+        navigator.updateLocation(fix)
+    }
+
+    /**
+     * Attiva il GPS "live" per mostrare l'utente sulla mappa libera (non in guida).
+     * Richiede permesso già concesso. Idempotente.
+     */
+    fun startLiveLocation() {
+        if (liveGpsJob?.isActive == true) return
+        liveGpsJob = viewModelScope.launch {
+            runCatching {
+                gpsSource.asFlow().collect { fix ->
+                    _currentPosition.value = fix.point
+                    fix.courseDegrees?.let { _currentBearing.value = it }
+                }
+            }
+        }
+    }
+
+    fun stopLiveLocation() {
+        liveGpsJob?.cancel()
+        liveGpsJob = null
+    }
+
+    /** Ricerca destinazioni (forward geocoding). Popola [searchResults]. */
+    fun search(query: String) {
+        if (query.isBlank()) { _searchResults.value = emptyList(); return }
+        viewModelScope.launch {
+            _busy.value = true
+            val res = geocoder.search(query, limit = 6)
+            _searchResults.value = (res as? GeocodeResult.Success)?.places ?: emptyList()
+            _busy.value = false
+        }
+    }
+
+    fun clearSearch() { _searchResults.value = emptyList() }
+
+    /**
+     * Calcola il percorso dalla posizione corrente (o, se ignota, da un default)
+     * verso [destination] e va in anteprima. Usato dopo la scelta di un risultato.
+     */
+    fun planTo(destination: GeocodedPlace) {
+        if (_busy.value) return
+        viewModelScope.launch {
+            _busy.value = true
+            _searchResults.value = emptyList()
+            val origin = _currentPosition.value ?: DEFAULT_ORIGIN
+            val vehicle = currentVehicleProfile()
+            when (val result = navigator.computeRoute(
+                waypoints = listOf(origin, destination.point),
+                profile = vehicle.toProfile(),
+                options = vehicle.toRouteOptions(),
+            )) {
+                is RouteResult.Success -> _screen.value = Screen.Preview(
+                    route = result.route,
+                    originLabel = "La tua posizione",
+                    destinationLabel = destination.displayName,
+                )
+                is RouteResult.Failure -> _planningMessage.value =
+                    "Impossibile calcolare il percorso: ${result.error}"
+            }
+            _busy.value = false
+        }
+    }
+
+    fun backToMap() {
+        _screen.value = Screen.Map
+        _planningMessage.value = null
+    }
+
+    /** Comando event-centric: ricalcola il percorso (es. su deviazione). */
+    fun recalculate() {
+        navigator.dispatch(com.enaide.sdk.model.NavigationCommand.Recalculate)
+    }
+
+    /** Ferma la guida e torna alla mappa libera. */
+    fun stopDriving() {
+        locationJob?.cancel()
+        locationJob = null
+        navigator.stop()
+        _currentSpeedMps.value = 0.0
+        _screen.value = Screen.Map
+        _tab.value = AppTab.MAP
+        _planningMessage.value = null
+        // Riattiva il GPS live se era attivo (per continuare a vedersi sulla mappa).
+        if (_locationMode.value == LocationMode.GPS) startLiveLocation()
+    }
+
+    private suspend fun resolve(input: String): GeocodedPlace? {
+        parseGeo(input)?.let { point ->
+            val label = (geocoder.reverse(point) as? GeocodeResult.Success)
+                ?.places?.firstOrNull()?.displayName
+            return GeocodedPlace(point, label ?: "${point.latitude}, ${point.longitude}")
+        }
+        return (geocoder.search(input, limit = 1) as? GeocodeResult.Success)
+            ?.places?.firstOrNull()
+    }
+
+    private fun parseGeo(input: String): GeoPoint? {
+        val parts = input.split(",").map { it.trim() }
+        if (parts.size != 2) return null
+        val lat = parts[0].toDoubleOrNull() ?: return null
+        val lon = parts[1].toDoubleOrNull() ?: return null
+        return runCatching { GeoPoint(lat, lon) }.getOrNull()
+    }
+
+    private fun describeRoutingError(error: RoutingError, origin: GeocodedPlace, dest: GeocodedPlace): String =
+        when (error) {
+            is RoutingError.ServerError ->
+                if (error.body?.contains("suitable edges") == true || error.httpStatus == 400) {
+                    "Valhalla non trova strade percorribili vicino a uno dei punti.\n" +
+                        "Origine: ${origin.point.latitude}, ${origin.point.longitude}\n" +
+                        "Destinazione: ${dest.point.latitude}, ${dest.point.longitude}\n" +
+                        "Verifica che siano su terraferma e raggiungibili in auto."
+                } else {
+                    "Errore server (${error.httpStatus}): ${error.body}"
+                }
+            is RoutingError.NoRouteFound -> "Nessun percorso tra i due punti: ${error.message}"
+            is RoutingError.NetworkError -> "Errore di rete: ${error.cause.message}"
+            is RoutingError.InvalidRequest -> "Richiesta non valida: ${error.message}"
+            is RoutingError.ParseError -> "Risposta non interpretabile: ${error.cause.message}"
+        }
+
+    override fun onCleared() {
+        locationJob?.cancel()
+        liveGpsJob?.cancel()
+        navigator.stop()
+    }
+
+    private companion object {
+        /** Origine di fallback se la posizione utente è ignota (centro Zurigo). */
+        val DEFAULT_ORIGIN = GeoPoint(47.3769, 8.5417)
+    }
+}

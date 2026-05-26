@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        L'SDK non dichiara permission qui: i permessi di posizione (FINE/COARSE) e
+        FOREGROUND_SERVICE devono essere dichiarati dall'app che integra l'SDK,
+        così l'integratore controlla esplicitamente cosa richiedere all'utente.
+        Vedi README.md per la lista di permessi consigliati.
+    -->
+</manifest>

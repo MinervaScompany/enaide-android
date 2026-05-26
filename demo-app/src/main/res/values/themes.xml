@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema base dell'app demo. Eredita dal framework (nessuna dipendenza da
+         com.google.android.material): la UI vera e' tutta Compose Material3, qui
+         serve solo un tema NoActionBar per l'Activity host. -->
+    <style name="Theme.EnaideDemo" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
