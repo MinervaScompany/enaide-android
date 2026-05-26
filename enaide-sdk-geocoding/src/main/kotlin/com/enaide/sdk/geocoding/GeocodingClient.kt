@@ -33,15 +33,19 @@ public interface GeocodingClient {
 }
 
 /**
- * Un luogo geocodificato: coordinate + etichetta leggibile.
+ * Un luogo geocodificato, con testo **già formattato** per la UI.
  *
  * @property point coordinate WGS84 del luogo.
- * @property displayName etichetta completa fornita dal provider (es. l'indirizzo formattato).
- * @property type categoria OSM grezza (es. "city", "house", "road"), utile per ordinare/filtrare. Puo' essere null.
+ * @property name titolo pulito e breve (nome del luogo, oppure via + civico).
+ * @property secondaryText riga secondaria concisa (città/zona); può essere null.
+ * @property displayName etichetta completa grezza del provider (per casi avanzati).
+ * @property type categoria OSM grezza (es. "city", "house", "road"). Può essere null.
  */
 public data class GeocodedPlace(
     public val point: GeoPoint,
-    public val displayName: String,
+    public val name: String,
+    public val secondaryText: String? = null,
+    public val displayName: String = name,
     public val type: String? = null,
 )
 

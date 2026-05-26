@@ -300,7 +300,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     /** Risultato di ricerca scelto: mostra il punto nel bottom sheet (non naviga). */
     fun selectSearchResult(place: GeocodedPlace) {
         _searchResults.value = emptyList()
-        _selectedPlace.value = SelectedPlace(place.point, place.displayName, null)
+        _selectedPlace.value = SelectedPlace(place.point, place.name, place.secondaryText)
     }
 
     /** Azione sheet: naviga verso il luogo selezionato. */
@@ -710,10 +710,9 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         // Mostra subito il punto; il nome arriva dal reverse geocoding.
         _selectedPlace.value = SelectedPlace(point, coords, null)
         viewModelScope.launch {
-            val name = (geocoder.reverse(point) as? GeocodeResult.Success)
-                ?.places?.firstOrNull()?.displayName
-            if (name != null && _selectedPlace.value?.point == point) {
-                _selectedPlace.value = SelectedPlace(point, name, coords)
+            val place = (geocoder.reverse(point) as? GeocodeResult.Success)?.places?.firstOrNull()
+            if (place != null && _selectedPlace.value?.point == point) {
+                _selectedPlace.value = SelectedPlace(point, place.name, place.secondaryText ?: coords)
             }
         }
     }
@@ -763,6 +762,7 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         navigator.stop()
         NavigationService.stop(getApplication())
         tripStore.clear() // viaggio terminato: niente da recuperare
+        clearPlan()        // via il percorso e i suoi marker dalla mappa
         _currentSpeedMps.value = 0.0
         _screen.value = Screen.Map
         _tab.value = AppTab.MAP

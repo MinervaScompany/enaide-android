@@ -93,16 +93,26 @@ private val DarkScheme = darkColorScheme(
     secondary = Color(0xFF4DB6AC),
 )
 
+/** Palette token per la **dark mode**: colori più chiari per contrasto su mappa scura. */
+val EnaideDarkColors: EnaideColors = EnaideDefaultColors.copy(
+    routeLine = Color(0xFF64B5F6),
+    routeCasing = Color(0xFF0D47A1),
+    positionDot = Color(0xFF64B5F6),
+    positionHalo = Color(0x3364B5F6),
+    maneuverBanner = Color(0xFF1E3A5F),
+)
+
 /**
  * Theme dell'app: Material 3 + token di navigazione semantici.
  *
- * @param colors token navigazione personalizzabili (default [EnaideDefaultColors]).
- * @param darkTheme se usare lo schema scuro Material.
+ * @param darkTheme se usare lo schema scuro. Quando true e [colors] non è
+ *   esplicito, usa automaticamente [EnaideDarkColors].
+ * @param colors token navigazione; default in base a [darkTheme].
  */
 @Composable
 fun EnaideTheme(
-    colors: EnaideColors = EnaideDefaultColors,
     darkTheme: Boolean = false,
+    colors: EnaideColors = if (darkTheme) EnaideDarkColors else EnaideDefaultColors,
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalEnaideColors provides colors) {

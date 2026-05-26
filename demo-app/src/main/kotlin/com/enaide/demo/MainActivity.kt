@@ -301,15 +301,17 @@ private fun MapScreen(vm: NavViewModel) {
     val activeRoute = (navState as? NavigationState.Navigating)?.route
     val plan by vm.tripPlan.collectAsState()
 
-    // Marker mostrati: le tappe del viaggio (destinazione rossa, tappe arancio) +
-    // i POI (solo su mappa libera). L'origine non si marca (c'è l'indicatore utente).
+    // Marker della mappa LIBERA: solo i POI. Le tappe del viaggio si vedono solo
+    // mentre si naviga (qui mostriamo il tragitto attivo); così cancellando un
+    // viaggio i pin spariscono e non restano "appiccicati" alla mappa libera.
     val markers = buildList {
-        plan.stops.forEachIndexed { i, stop ->
-            if (i == 0) return@forEachIndexed // origine = indicatore utente
-            val kind = if (i == plan.stops.lastIndex) MarkerKind.DESTINATION else MarkerKind.WAYPOINT
-            add(MapMarker("stop-$i", stop.point, stop.label, kind))
-        }
-        if (!navigating) {
+        if (navigating) {
+            plan.stops.forEachIndexed { i, stop ->
+                if (i == 0) return@forEachIndexed
+                val kind = if (i == plan.stops.lastIndex) MarkerKind.DESTINATION else MarkerKind.WAYPOINT
+                add(MapMarker("stop-$i", stop.point, stop.label, kind))
+            }
+        } else {
             pois.forEach { add(MapMarker(it.point.poiId(), it.point, it.name ?: "POI", MarkerKind.POI)) }
         }
     }
@@ -427,9 +429,8 @@ private fun MapScreen(vm: NavViewModel) {
 @Composable
 private fun ResultRow(place: GeocodedPlace, onClick: () -> Unit) {
     ListItem(
-        headlineContent = {
-            Text(place.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
+        headlineContent = { Text(place.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium) },
+        supportingContent = place.secondaryText?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         leadingContent = { Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         modifier = Modifier.clickable(onClick = onClick),
     )
@@ -899,7 +900,8 @@ private fun OriginPicker(vm: NavViewModel) {
         Text(stringResource(R.string.origin_label), style = MaterialTheme.typography.bodyMedium)
         origin?.let {
             ListItem(
-                headlineContent = { Text(it.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                headlineContent = { Text(it.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = it.secondaryText?.let { s -> { Text(s, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                 leadingContent = { Icon(Icons.Filled.Place, contentDescription = null) },
                 trailingContent = {
                     IconButton(onClick = { query = ""; vm.clearCustomOrigin() }) {
@@ -918,7 +920,8 @@ private fun OriginPicker(vm: NavViewModel) {
         )
         results.forEach { place ->
             ListItem(
-                headlineContent = { Text(place.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                headlineContent = { Text(place.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = place.secondaryText?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                 modifier = Modifier.clickable { query = ""; vm.setCustomOrigin(place) },
             )
         }

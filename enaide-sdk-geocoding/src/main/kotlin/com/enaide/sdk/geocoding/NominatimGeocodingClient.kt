@@ -82,7 +82,7 @@ public class NominatimGeocodingClient internal constructor(
                 parameter("q", query)
                 parameter("format", "jsonv2")
                 parameter("limit", limit.coerceIn(1, 50))
-                parameter("addressdetails", 0)
+                parameter("addressdetails", 1) // componenti d'indirizzo per testo pulito
             }
         } catch (t: Throwable) {
             return GeocodeResult.Failure(GeocodingError.NetworkError(t))
@@ -110,7 +110,7 @@ public class NominatimGeocodingClient internal constructor(
                 parameter("lat", point.latitude)
                 parameter("lon", point.longitude)
                 parameter("format", "jsonv2")
-                parameter("addressdetails", 0)
+                parameter("addressdetails", 1)
             }
         } catch (t: Throwable) {
             return GeocodeResult.Failure(GeocodingError.NetworkError(t))
@@ -142,13 +142,40 @@ public class NominatimGeocodingClient internal constructor(
         return GeocodingError.ServerError(response.status.value, body)
     }
 
-    /** Converte un DTO in [GeocodedPlace], scartandolo se mancano coordinate valide. */
+    /**
+     * Converte un DTO in [GeocodedPlace] con **testo già formattato** per la UI:
+     * - titolo = nome del luogo (POI) oppure via + civico;
+     * - secondario = località (città/zona);
+     * scartando il `display_name` grezzo e prolisso di Nominatim.
+     */
     private fun NominatimPlace.toPlaceOrNull(): GeocodedPlace? {
         val latVal = lat?.toDoubleOrNull() ?: return null
         val lonVal = lon?.toDoubleOrNull() ?: return null
-        val name = displayName?.takeIf { it.isNotBlank() } ?: return null
         val point = runCatching { GeoPoint(latVal, lonVal) }.getOrNull() ?: return null
-        return GeocodedPlace(point = point, displayName = name, type = type ?: addressType)
+
+        val a = address
+        val street = a?.road?.let { r -> a.houseNumber?.let { "$r $it" } ?: r }
+        // Titolo: nome proprio del POI, altrimenti via+civico, altrimenti località.
+        val title = name?.takeIf { it.isNotBlank() }
+            ?: street
+            ?: a?.locality()
+            ?: displayName?.substringBefore(",")?.trim()
+            ?: return null
+        // Secondario: se il titolo è un nome proprio mostriamo via+città; se è già
+        // una via mostriamo la città; evitiamo di ripetere il titolo.
+        val parts = listOfNotNull(
+            street?.takeIf { it != title },
+            a?.locality()?.takeIf { it != title },
+        ).distinct()
+        val secondary = parts.joinToString(", ").ifBlank { null }
+
+        return GeocodedPlace(
+            point = point,
+            name = title,
+            secondaryText = secondary,
+            displayName = displayName ?: title,
+            type = type ?: addressType,
+        )
     }
 
     override fun close() {

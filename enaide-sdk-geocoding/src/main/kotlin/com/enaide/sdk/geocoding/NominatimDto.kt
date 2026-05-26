@@ -17,10 +17,32 @@ import kotlinx.serialization.Serializable
 internal data class NominatimPlace(
     val lat: String? = null,
     val lon: String? = null,
+    val name: String? = null,
     @SerialName("display_name") val displayName: String? = null,
     val type: String? = null,
     @SerialName("addresstype") val addressType: String? = null,
+    val address: NominatimAddress? = null,
 )
+
+/** Componenti d'indirizzo strutturati (con `addressdetails=1`). */
+@Serializable
+internal data class NominatimAddress(
+    val road: String? = null,
+    @SerialName("house_number") val houseNumber: String? = null,
+    val neighbourhood: String? = null,
+    val suburb: String? = null,
+    val city: String? = null,
+    val town: String? = null,
+    val village: String? = null,
+    val municipality: String? = null,
+    val county: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    val postcode: String? = null,
+) {
+    /** Località principale: città/paese/comune, il primo disponibile. */
+    fun locality(): String? = city ?: town ?: village ?: municipality ?: county
+}
 
 /**
  * Forma di errore di Nominatim per `/reverse` quando non trova nulla:
