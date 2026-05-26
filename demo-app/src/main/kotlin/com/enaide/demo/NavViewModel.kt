@@ -20,6 +20,7 @@ import com.enaide.sdk.simulation.WrongTurn
 import com.enaide.sdk.vehicle.VehicleKind
 import com.enaide.sdk.vehicle.VehicleProfile
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -117,6 +118,38 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     /** Endpoint configurati (sola lettura nella demo: cambiarli richiede riavvio). */
     val routingEndpoint: String get() = config.routingBaseUrl
     val geocodingEndpoint: String get() = config.nominatimBaseUrl
+
+    /**
+     * Origine manuale impostata dall'utente (modalità senza GPS reale). Se settata,
+     * ha priorità sul GPS come punto di partenza dei percorsi.
+     */
+    private val _customOrigin = MutableStateFlow<GeocodedPlace?>(null)
+    val customOrigin: StateFlow<GeocodedPlace?> = _customOrigin.asStateFlow()
+
+    /** Risultati ricerca per impostare l'origine manuale. */
+    private val _originResults = MutableStateFlow<List<GeocodedPlace>>(emptyList())
+    val originResults: StateFlow<List<GeocodedPlace>> = _originResults.asStateFlow()
+
+    private var originSearchJob: Job? = null
+
+    fun searchOrigin(query: String) {
+        originSearchJob?.cancel()
+        if (query.isBlank()) { _originResults.value = emptyList(); return }
+        originSearchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            val r = geocoder.search(query, limit = 6)
+            _originResults.value = (r as? GeocodeResult.Success)?.places ?: emptyList()
+        }
+    }
+
+    fun setCustomOrigin(place: GeocodedPlace) {
+        _customOrigin.value = place
+        _originResults.value = emptyList()
+        // Mostra subito l'origine scelta sulla mappa.
+        _currentPosition.value = place.point
+    }
+
+    fun clearCustomOrigin() { _customOrigin.value = null }
 
     /** Tab correntemente selezionata. */
     private val _tab = MutableStateFlow(AppTab.MAP)
@@ -297,13 +330,29 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         liveGpsJob = null
     }
 
-    /** Ricerca destinazioni (forward geocoding). Popola [searchResults]. */
+    private var searchJob: Job? = null
+
+    /**
+     * Ricerca destinazioni con **debounce**: aspetta che l'utente smetta di
+     * digitare prima di chiamare Nominatim. Senza, una query a ogni tasto manda
+     * decine di richieste e fa scattare il rate-limit 429 del server pubblico.
+     */
     fun search(query: String) {
-        if (query.isBlank()) { _searchResults.value = emptyList(); return }
-        viewModelScope.launch {
+        searchJob?.cancel()
+        if (query.isBlank()) { _searchResults.value = emptyList(); _busy.value = false; return }
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
             _busy.value = true
-            val res = geocoder.search(query, limit = 6)
-            _searchResults.value = (res as? GeocodeResult.Success)?.places ?: emptyList()
+            when (val res = geocoder.search(query, limit = 6)) {
+                is GeocodeResult.Success -> {
+                    _searchResults.value = res.places
+                    _planningMessage.value = if (res.places.isEmpty()) "Nessun risultato" else null
+                }
+                is GeocodeResult.Failure -> {
+                    _searchResults.value = emptyList()
+                    _planningMessage.value = geocodingErrorMessage(res.error)
+                }
+            }
             _busy.value = false
         }
     }
@@ -319,7 +368,13 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _busy.value = true
             _searchResults.value = emptyList()
-            val origin = _currentPosition.value ?: DEFAULT_ORIGIN
+            // Origine: GPS live se in modalità GPS, altrimenti l'origine manuale
+            // impostata, infine il default.
+            val origin = when {
+                _locationMode.value == LocationMode.GPS && _currentPosition.value != null -> _currentPosition.value!!
+                _customOrigin.value != null -> _customOrigin.value!!.point
+                else -> _currentPosition.value ?: DEFAULT_ORIGIN
+            }
             val vehicle = currentVehicleProfile()
             when (val result = navigator.computeRoute(
                 waypoints = listOf(origin, destination.point),
@@ -402,8 +457,21 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         navigator.stop()
     }
 
+    private fun geocodingErrorMessage(error: com.enaide.sdk.geocoding.GeocodingError): String = when (error) {
+        is com.enaide.sdk.geocoding.GeocodingError.ServerError ->
+            if (error.httpStatus == 429)
+                "Troppe richieste a Nominatim (limite pubblico). Riprova fra un minuto."
+            else "Errore server geocoding (${error.httpStatus})."
+        is com.enaide.sdk.geocoding.GeocodingError.NetworkError -> "Errore di rete nella ricerca."
+        is com.enaide.sdk.geocoding.GeocodingError.InvalidRequest -> "Ricerca non valida."
+        is com.enaide.sdk.geocoding.GeocodingError.ParseError -> "Risposta non interpretabile."
+    }
+
     private companion object {
         /** Origine di fallback se la posizione utente è ignota (centro Zurigo). */
         val DEFAULT_ORIGIN = GeoPoint(47.3769, 8.5417)
+
+        /** Attesa prima di lanciare la ricerca, per non spammare Nominatim (429). */
+        const val SEARCH_DEBOUNCE_MS = 600L
     }
 }

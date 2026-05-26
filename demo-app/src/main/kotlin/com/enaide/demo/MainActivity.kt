@@ -28,9 +28,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Map
@@ -40,18 +40,24 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -187,6 +193,7 @@ private fun MapTab(vm: NavViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MapScreen(vm: NavViewModel) {
     val position by vm.currentPosition.collectAsState()
@@ -227,59 +234,45 @@ private fun MapScreen(vm: NavViewModel) {
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = "La mia posizione") }
 
-        // Search bar fissa in alto + risultati a tendina.
-        Column(
-            modifier = Modifier.align(Alignment.TopCenter).padding(12.dp).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                tonalElevation = 4.dp,
-                shadowElevation = 4.dp,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it; vm.search(it) },
+        // SearchBar nativa Material 3: in espansione mostra i risultati nel suo
+        // contenitore standard (niente Surface/forme custom).
+        var expanded by remember { mutableStateOf(false) }
+        SearchBar(
+            modifier = Modifier.align(Alignment.TopCenter),
+            inputField = {
+                SearchBarDefaults.InputField(
+                    query = query,
+                    onQueryChange = { query = it; vm.search(it) },
+                    onSearch = { vm.search(it) },
+                    expanded = expanded,
+                    onExpandedChange = { expanded = it },
                     placeholder = { Text("Cerca destinazione") },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
-                        if (query.isNotEmpty()) Icon(
-                            Icons.Filled.Close, contentDescription = "Pulisci",
-                            modifier = Modifier.clickable { query = ""; vm.clearSearch() },
-                        )
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = ""; vm.clearSearch() }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Pulisci")
+                            }
+                        }
                     },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+        ) {
+            if (busy) {
+                ListItem(
+                    headlineContent = { Text("Cerco…") },
+                    leadingContent = { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) },
                 )
             }
-
-            if (busy) {
-                Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 2.dp) {
-                    Row(
-                        Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text("Cerco…")
-                    }
+            LazyColumn {
+                items(results) { place ->
+                    ResultRow(place) { expanded = false; vm.planTo(place) }
                 }
             }
-
-            if (results.isNotEmpty()) {
-                Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
-                    LazyColumn(modifier = Modifier.heightIn(max = 300.dp).padding(horizontal = 12.dp)) {
-                        items(results) { place -> ResultRow(place) { vm.planTo(place) } }
-                    }
-                }
-            }
-
             message?.let {
-                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
-                    Text(it, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
-                }
+                ListItem(headlineContent = { Text(it, color = MaterialTheme.colorScheme.error) })
             }
         }
     }
@@ -287,14 +280,13 @@ private fun MapScreen(vm: NavViewModel) {
 
 @Composable
 private fun ResultRow(place: GeocodedPlace, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Text(place.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
+    ListItem(
+        headlineContent = {
+            Text(place.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        },
+        leadingContent = { Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 // --- Preview ----------------------------------------------------------------
@@ -312,11 +304,8 @@ private fun PreviewScreen(vm: NavViewModel, screen: Screen.Preview) {
             modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
         ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro") }
 
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            tonalElevation = 6.dp,
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+        Card(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
@@ -362,26 +351,22 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
     val bearing by vm.currentBearing.collectAsState()
     val speedMps by vm.currentSpeedMps.collectAsState()
     val cameraState = remember { MapCameraState() }
-    val colors = EnaideTheme.colors
 
     Box(Modifier.fillMaxSize()) {
         RouteMap(route = route, position = progress.snappedLocation, bearing = bearing,
             threeD = true, cameraState = cameraState, modifier = Modifier.fillMaxSize())
 
         Column(
-            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).fillMaxWidth(0.94f),
+            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ManeuverBanner(nextStep?.maneuver, progress.distanceToNextManeuverMeters)
             nextStep?.roadName?.let { road ->
-                Surface(
-                    color = colors.roadCard,
-                    shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
-                    tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth(0.82f),
-                ) {
-                    Text(road, Modifier.padding(vertical = 10.dp), textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                        color = colors.onRoadCard)
+                Card {
+                    Text(road, Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                        textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -391,12 +376,7 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 160.dp),
         ) { Icon(Icons.Filled.MyLocation, contentDescription = "Ricentra") }
 
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            tonalElevation = 8.dp,
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-        ) {
+        Card(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Metric(UnitFormatter.formatDuration(progress.durationRemainingSeconds), "all'arrivo")
@@ -420,18 +400,23 @@ private fun DrivingScreen(vm: NavViewModel, state: NavigationState.Navigating, o
 
 @Composable
 private fun ManeuverBanner(maneuver: com.enaide.sdk.model.Maneuver?, distanceToManeuverMeters: Double) {
-    val colors = EnaideTheme.colors
-    Surface(color = colors.maneuverBanner, shape = RoundedCornerShape(18.dp), tonalElevation = 6.dp,
-        modifier = Modifier.fillMaxWidth()) {
+    // Card nativa colorata con l'API ufficiale CardDefaults (colore = primary,
+    // brand del navigatore). Nessuna forma/elevazione custom.
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(maneuver?.let { ManeuverText.glyph(it) } ?: "↑", fontSize = 44.sp, color = colors.onManeuverBanner)
+            Text(maneuver?.let { ManeuverText.glyph(it) } ?: "↑", fontSize = 44.sp)
             Column {
                 Text(UnitFormatter.formatDistance(distanceToManeuverMeters),
-                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
-                    color = colors.onManeuverBanner)
+                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                 Text(maneuver?.let { ManeuverText.phrase(it, null) } ?: "Prosegui",
-                    style = MaterialTheme.typography.titleMedium, color = colors.onManeuverBanner)
+                    style = MaterialTheme.typography.titleMedium)
             }
         }
     }
@@ -520,6 +505,7 @@ private fun SettingsScreen(vm: NavViewModel) {
             }
             if (mode == LocationMode.SIMULATED) {
                 SettingRow("Simula errore (test reroute)", wrongTurn) { vm.setSimulateWrongTurn(it) }
+                OriginPicker(vm)
             }
         }
 
@@ -532,6 +518,42 @@ private fun SettingsScreen(vm: NavViewModel) {
         SettingsSection("Server (sola lettura)") {
             LabeledValue("Routing (Valhalla)", vm.routingEndpoint)
             LabeledValue("Geocoding (Nominatim)", vm.geocodingEndpoint)
+        }
+    }
+}
+
+@Composable
+private fun OriginPicker(vm: NavViewModel) {
+    val origin by vm.customOrigin.collectAsState()
+    val results by vm.originResults.collectAsState()
+    var query by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Origine di partenza", style = MaterialTheme.typography.bodyMedium)
+        origin?.let {
+            ListItem(
+                headlineContent = { Text(it.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingContent = { Icon(Icons.Filled.Place, contentDescription = null) },
+                trailingContent = {
+                    IconButton(onClick = { query = ""; vm.clearCustomOrigin() }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Rimuovi origine")
+                    }
+                },
+            )
+        }
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it; vm.searchOrigin(it) },
+            placeholder = { Text("Cerca un punto di partenza") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        results.forEach { place ->
+            ListItem(
+                headlineContent = { Text(place.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                modifier = Modifier.clickable { query = ""; vm.setCustomOrigin(place) },
+            )
         }
     }
 }
@@ -569,7 +591,7 @@ private fun LabeledValue(label: String, value: String) {
 private fun VehicleKind.icon(): ImageVector = when (this) {
     VehicleKind.CAR -> Icons.Filled.DirectionsCar
     VehicleKind.PEDESTRIAN -> Icons.AutoMirrored.Filled.DirectionsWalk
-    VehicleKind.BICYCLE -> Icons.Filled.DirectionsBike
+    VehicleKind.BICYCLE -> Icons.AutoMirrored.Filled.DirectionsBike
     VehicleKind.TRUCK -> Icons.Filled.LocalShipping
 }
 
