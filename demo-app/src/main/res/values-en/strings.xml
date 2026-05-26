@@ -82,6 +82,9 @@
     <string name="skip_stop">Skip stop</string>
     <string name="resume_trip">Resume your trip?</string>
     <string name="resume">Resume</string>
+    <string name="navigate_here">Navigate here</string>
+    <string name="add_as_stop">Add as stop</string>
+    <string name="close">Close</string>
     <string name="simulate_error">Simulate error (test reroute)</string>
     <string name="origin_label">Starting point</string>
     <string name="origin_search">Search a starting point</string>

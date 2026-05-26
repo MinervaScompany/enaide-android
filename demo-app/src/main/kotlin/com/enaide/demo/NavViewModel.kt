@@ -273,10 +273,42 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Naviga verso un POI (tap sul marker): lo imposta come destinazione. */
-    fun navigateToPoi(poiId: String) {
+    // --- Luogo selezionato (bottom sheet dettagli) ---------------------------
+
+    /** Luogo scelto sulla mappa (tap su POI o long-press), mostrato nel bottom sheet. */
+    data class SelectedPlace(
+        val point: GeoPoint,
+        val title: String,
+        val subtitle: String?,
+    )
+
+    private val _selectedPlace = MutableStateFlow<SelectedPlace?>(null)
+    val selectedPlace: StateFlow<SelectedPlace?> = _selectedPlace.asStateFlow()
+
+    fun dismissSelectedPlace() { _selectedPlace.value = null }
+
+    /** Tap su un marker POI: apre il bottom sheet coi dettagli (non naviga subito). */
+    fun selectPoi(poiId: String) {
         val poi = _pois.value.firstOrNull { it.point.poiId() == poiId } ?: return
-        planTo(GeocodedPlace(poi.point, poi.name ?: str(R.string.poi_default_name)))
+        _selectedPlace.value = SelectedPlace(
+            point = poi.point,
+            title = poi.name ?: str(R.string.poi_default_name),
+            subtitle = poi.tags["amenity"] ?: poi.tags["shop"] ?: poi.tags["tourism"],
+        )
+    }
+
+    /** Azione sheet: naviga verso il luogo selezionato. */
+    fun navigateToSelected() {
+        val p = _selectedPlace.value ?: return
+        _selectedPlace.value = null
+        planTo(GeocodedPlace(p.point, p.title))
+    }
+
+    /** Azione sheet: aggiungi il luogo selezionato come tappa. */
+    fun addSelectedAsStop() {
+        val p = _selectedPlace.value ?: return
+        _selectedPlace.value = null
+        addStop(GeocodedPlace(p.point, p.title))
     }
 
     // --- Pianificazione percorso (TripPlan) ----------------------------------
@@ -664,16 +696,18 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Punto scelto col long-press sulla mappa: reverse geocoding (OSM) per dargli
-     * un nome, poi calcola il percorso verso di esso.
+     * un nome e apre il bottom sheet coi dettagli (non naviga subito).
      */
     fun selectPointOnMap(point: GeoPoint) {
+        val coords = "%.5f, %.5f".format(point.latitude, point.longitude)
+        // Mostra subito il punto; il nome arriva dal reverse geocoding.
+        _selectedPlace.value = SelectedPlace(point, coords, null)
         viewModelScope.launch {
-            _busy.value = true
-            val label = (geocoder.reverse(point) as? GeocodeResult.Success)
+            val name = (geocoder.reverse(point) as? GeocodeResult.Success)
                 ?.places?.firstOrNull()?.displayName
-                ?: "%.5f, %.5f".format(point.latitude, point.longitude)
-            _busy.value = false
-            planTo(GeocodedPlace(point, label))
+            if (name != null && _selectedPlace.value?.point == point) {
+                _selectedPlace.value = SelectedPlace(point, name, coords)
+            }
         }
     }
 

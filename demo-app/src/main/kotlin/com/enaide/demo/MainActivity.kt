@@ -334,10 +334,21 @@ private fun MapScreen(vm: NavViewModel) {
             cameraState = cameraState,
             onLongPress = { vm.selectPointOnMap(it) },
             markers = markers,
-            onMarkerClick = { vm.navigateToPoi(it) },
+            onMarkerClick = { vm.selectPoi(it) },
             styleUri = mapStyle,
             modifier = Modifier.fillMaxSize(),
         )
+
+        // Bottom sheet dettagli del luogo selezionato (tap POI / long-press).
+        val selected by vm.selectedPlace.collectAsState()
+        selected?.let { place ->
+            PlaceSheet(
+                place = place,
+                onNavigate = { vm.navigateToSelected() },
+                onAddStop = { vm.addSelectedAsStop() },
+                onDismiss = { vm.dismissSelectedPlace() },
+            )
+        }
 
         FloatingActionButton(
             onClick = { locate() },
@@ -1014,6 +1025,41 @@ private fun laneGlyph(dirs: Set<LaneDirection>): String = when {
     LaneDirection.RIGHT in dirs || LaneDirection.SHARP_RIGHT in dirs -> "→"
     LaneDirection.REVERSE in dirs -> "↓"
     else -> "•"
+}
+
+/** Bottom sheet con i dettagli di un luogo selezionato + azioni di navigazione. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaceSheet(
+    place: NavViewModel.SelectedPlace,
+    onNavigate: () -> Unit,
+    onAddStop: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(place.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            place.subtitle?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+            }
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onNavigate, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Navigation, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.navigate_here))
+            }
+            OutlinedButton(onClick = onAddStop, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.add_as_stop))
+            }
+        }
+    }
 }
 
 /** Cartello limite velocità stile europeo: cerchio bianco, bordo rosso, numero nero. */
