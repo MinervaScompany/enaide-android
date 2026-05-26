@@ -40,6 +40,15 @@ class GpsLocationSource(context: Context) {
      * @param minIntervalMillis intervallo minimo tra aggiornamenti.
      * @param minDistanceMeters spostamento minimo tra aggiornamenti.
      */
+    /** Ultima posizione nota (la più recente fra i provider attivi), o null. */
+    @SuppressLint("MissingPermission")
+    fun lastKnown(): UserLocation? =
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
+            .mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.time }
+            ?.toUserLocation()
+
     @SuppressLint("MissingPermission")
     fun asFlow(
         minIntervalMillis: Long = 1000L,

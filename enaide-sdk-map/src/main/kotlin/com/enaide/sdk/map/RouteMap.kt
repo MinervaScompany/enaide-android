@@ -44,6 +44,9 @@ private const val POSITION_ICON = "position-arrow"
 private const val DRIVE_ZOOM = 17.5
 private const val DRIVE_TILT = 55.0 // gradi di inclinazione (0 = dall'alto, 60 = molto prospettico)
 
+/** Zoom di default della mappa 2D (esplorazione): ravvicinato, livello quartiere. */
+private const val MAP_ZOOM = 16.0
+
 /**
  * Stato della camera controllabile dall'esterno (es. FAB "ricentra").
  *
@@ -82,6 +85,7 @@ fun RouteMap(
     bearing: Double? = null,
     threeD: Boolean = false,
     cameraState: MapCameraState? = null,
+    onLongPress: ((GeoPoint) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     remember { MapLibre.getInstance(context) }
@@ -89,6 +93,8 @@ fun RouteMap(
     val colors = EnaideTheme.colors
     val mapView = remember { MapView(context) }
     val holder = remember { MapHolder() }
+    // Callback long-press aggiornabile senza ricreare la mappa.
+    holder.onLongPress = onLongPress
 
     DisposableEffect(Unit) {
         mapView.onCreate(null)
@@ -103,12 +109,22 @@ fun RouteMap(
                     setRouteGeometry(style, it)
                     if (position == null) fitToRoute(map, it)
                 }
-                position?.let { updatePosition(style, it, bearing) }
+                position?.let {
+                    updatePosition(style, it, bearing)
+                    // All'avvio centra subito sulla posizione con zoom ravvicinato
+                    // (anche senza GPS: parte da Zurigo a livello quartiere).
+                    if (route == null) animateDriveCamera(map, it, bearing, threeD)
+                }
             }
             map.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
                     cameraState?.followMode = false
                 }
+            }
+            // Long-press sulla mappa = scegli un punto (non confligge col pan/tap).
+            map.addOnMapLongClickListener { latLng ->
+                holder.onLongPress?.invoke(GeoPoint(latLng.latitude, latLng.longitude))
+                true
             }
         }
         cameraState?.onRecenter = {
@@ -149,6 +165,7 @@ fun RouteMap(
 private class MapHolder {
     var map: MapLibreMap? = null
     var styleReady: Boolean = false
+    var onLongPress: ((GeoPoint) -> Unit)? = null
 }
 
 private fun animateDriveCamera(map: MapLibreMap, position: GeoPoint, bearing: Double?, threeD: Boolean) {
@@ -158,7 +175,7 @@ private fun animateDriveCamera(map: MapLibreMap, position: GeoPoint, bearing: Do
     val h = map.height
     val builder = CameraPosition.Builder()
         .target(LatLng(position.latitude, position.longitude))
-        .zoom(if (threeD) DRIVE_ZOOM else 16.0)
+        .zoom(if (threeD) DRIVE_ZOOM else MAP_ZOOM)
         .tilt(if (threeD) DRIVE_TILT else 0.0)
         .bearing(if (threeD) (bearing ?: 0.0) else 0.0)
     if (threeD && h > 0) {

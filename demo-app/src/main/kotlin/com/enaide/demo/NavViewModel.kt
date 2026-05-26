@@ -182,8 +182,12 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
         VehicleKind.TRUCK -> VehicleProfile.truck(_truckDimensions.value)
     }
 
-    /** Posizione corrente (snapped) per la mappa; `null` fuori dalla guida. */
-    private val _currentPosition = MutableStateFlow<GeoPoint?>(null)
+    /**
+     * Posizione corrente mostrata sulla mappa. Default = Zurigo (siamo in
+     * simulazione all'avvio). Aggiornata dai fix GPS, dall'origine manuale o dal
+     * tap sulla mappa.
+     */
+    private val _currentPosition = MutableStateFlow<GeoPoint?>(DEFAULT_ORIGIN)
     val currentPosition: StateFlow<GeoPoint?> = _currentPosition.asStateFlow()
 
     /** Direzione di moto corrente in gradi (per orientare la camera 3D); `null` se ignota. */
@@ -197,7 +201,18 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     private var locationJob: Job? = null
 
     fun setLocationMode(mode: LocationMode) {
+        if (_locationMode.value == mode) return
         _locationMode.value = mode
+        // Lo switch NON azzera mai il puntatore: si mantiene la posizione corrente.
+        // GPS → avvia la sorgente live (il primo fix la aggiornerà);
+        // Simulato → ferma il GPS e tiene l'ultima posizione (o l'origine manuale).
+        when (mode) {
+            LocationMode.GPS -> startLiveLocation()
+            LocationMode.SIMULATED -> {
+                stopLiveLocation()
+                _customOrigin.value?.let { _currentPosition.value = it.point }
+            }
+        }
     }
 
     /**
@@ -316,6 +331,15 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     fun startLiveLocation() {
         if (liveGpsJob?.isActive == true) return
         liveGpsJob = viewModelScope.launch {
+            // Prova più volte a recuperare l'ultima posizione nota, così la mappa
+            // si centra subito su uno zoom sensato mentre arriva il primo fix vero.
+            repeat(LOCATE_RETRIES) { attempt ->
+                if (attempt > 0 || _currentPosition.value == DEFAULT_ORIGIN) {
+                    gpsSource.lastKnown()?.let { _currentPosition.value = it.point }
+                }
+                if (gpsSource.lastKnown() != null) return@repeat
+                delay(LOCATE_RETRY_DELAY_MS)
+            }
             runCatching {
                 gpsSource.asFlow().collect { fix ->
                     _currentPosition.value = fix.point
@@ -358,6 +382,21 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearSearch() { _searchResults.value = emptyList() }
+
+    /**
+     * Punto scelto col long-press sulla mappa: reverse geocoding (OSM) per dargli
+     * un nome, poi calcola il percorso verso di esso.
+     */
+    fun selectPointOnMap(point: GeoPoint) {
+        viewModelScope.launch {
+            _busy.value = true
+            val label = (geocoder.reverse(point) as? GeocodeResult.Success)
+                ?.places?.firstOrNull()?.displayName
+                ?: "%.5f, %.5f".format(point.latitude, point.longitude)
+            _busy.value = false
+            planTo(GeocodedPlace(point, label))
+        }
+    }
 
     /**
      * Calcola il percorso dalla posizione corrente (o, se ignota, da un default)
@@ -473,5 +512,9 @@ internal class NavViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Attesa prima di lanciare la ricerca, per non spammare Nominatim (429). */
         const val SEARCH_DEBOUNCE_MS = 600L
+
+        /** Tentativi di lettura posizione iniziale + attesa fra l'uno e l'altro. */
+        const val LOCATE_RETRIES = 5
+        const val LOCATE_RETRY_DELAY_MS = 800L
     }
 }

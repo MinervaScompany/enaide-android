@@ -229,6 +229,7 @@ private fun MapScreen(vm: NavViewModel) {
             bearing = bearing,
             threeD = false,
             cameraState = cameraState,
+            onLongPress = { vm.selectPointOnMap(it) },
             modifier = Modifier.fillMaxSize(),
         )
 
