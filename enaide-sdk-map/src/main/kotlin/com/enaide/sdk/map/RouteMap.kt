@@ -44,23 +44,33 @@ private const val POSITION_HALO_LAYER = "position-halo"
 private const val POSITION_ICON = "position-arrow"
 private const val POI_SOURCE = "poi-source"
 private const val POI_LAYER = "poi-layer"
-private const val POI_ICON = "poi-pin"
 private const val POI_PROP_LABEL = "label"
 private const val POI_PROP_ID = "id"
+private const val POI_PROP_KIND = "kind"
+// Un'icona pin per ciascun tipo di marker (colori diversi).
+private const val ICON_POI = "pin-poi"
+private const val ICON_DESTINATION = "pin-destination"
+private const val ICON_WAYPOINT = "pin-waypoint"
+private const val ICON_SELECTED = "pin-selected"
 
 /**
- * Marker generico da disegnare sulla mappa (es. un POI). Tipo neutro: il modulo
- * map non dipende dal modulo poi, così resta indipendente.
+ * Marker da disegnare sulla mappa. Tipo neutro: il modulo map non dipende dai
+ * moduli poi/routing, così resta indipendente.
  *
  * @property id identificatore stabile (per il tap).
  * @property point coordinate.
- * @property label etichetta mostrata/usata al tap.
+ * @property label etichetta (usata al tap).
+ * @property kind aspetto del pin (POI, destinazione, tappa, punto scelto).
  */
 public data class MapMarker(
     public val id: String,
     public val point: GeoPoint,
     public val label: String,
+    public val kind: MarkerKind = MarkerKind.POI,
 )
+
+/** Categorie visive di marker: determinano colore/forma del pin. */
+public enum class MarkerKind { POI, DESTINATION, WAYPOINT, SELECTED }
 
 /**
  * Stili mappa disponibili (URI MapLibre Style Spec). Personalizzabili: passa un
@@ -329,15 +339,25 @@ private fun setupLayers(style: Style, colors: EnaideColors) {
         )
     )
 
-    // Marker POI: pin a goccia stile mappa. Sorgente vuota all'inizio.
-    // NB: niente `textField` — lo style raster OSM non definisce `glyphs`, e un
-    // SymbolLayer con testo senza glyphs NON viene renderizzato affatto (icona
-    // inclusa). Mostriamo solo l'icona pin; l'etichetta appare al tap.
+    // Marker: un pin a goccia per ciascun tipo (colore diverso). L'icona giusta
+    // è scelta a runtime via match sulla property "kind" del feature.
     style.addSource(GeoJsonSource(POI_SOURCE))
-    style.addImage(POI_ICON, pinBitmap(AndroidColor.parseColor(colors.routeLineHex())))
+    style.addImage(ICON_POI, pinBitmap(AndroidColor.parseColor(colors.positionDotHex())))
+    style.addImage(ICON_DESTINATION, pinBitmap(AndroidColor.parseColor("#E53935"))) // rosso
+    style.addImage(ICON_WAYPOINT, pinBitmap(AndroidColor.parseColor("#FB8C00"))) // arancio
+    style.addImage(ICON_SELECTED, pinBitmap(AndroidColor.parseColor(colors.routeLineHex())))
     style.addLayer(
         SymbolLayer(POI_LAYER, POI_SOURCE).withProperties(
-            PropertyFactory.iconImage(POI_ICON),
+            PropertyFactory.iconImage(
+                org.maplibre.android.style.expressions.Expression.match(
+                    get(POI_PROP_KIND),
+                    org.maplibre.android.style.expressions.Expression.literal(ICON_POI), // default
+                    org.maplibre.android.style.expressions.Expression.stop("DESTINATION", org.maplibre.android.style.expressions.Expression.literal(ICON_DESTINATION)),
+                    org.maplibre.android.style.expressions.Expression.stop("WAYPOINT", org.maplibre.android.style.expressions.Expression.literal(ICON_WAYPOINT)),
+                    org.maplibre.android.style.expressions.Expression.stop("SELECTED", org.maplibre.android.style.expressions.Expression.literal(ICON_SELECTED)),
+                    org.maplibre.android.style.expressions.Expression.stop("POI", org.maplibre.android.style.expressions.Expression.literal(ICON_POI)),
+                )
+            ),
             PropertyFactory.iconAllowOverlap(true),
             PropertyFactory.iconIgnorePlacement(true),
             PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM), // punta in basso
@@ -385,6 +405,7 @@ private fun setMarkers(style: Style, markers: List<MapMarker>) {
         Feature.fromGeometry(Point.fromLngLat(m.point.longitude, m.point.latitude)).apply {
             addStringProperty(POI_PROP_ID, m.id)
             addStringProperty(POI_PROP_LABEL, m.label)
+            addStringProperty(POI_PROP_KIND, m.kind.name)
         }
     }
     source.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(features))

@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -107,6 +108,7 @@ import com.enaide.sdk.geocoding.GeocodedPlace
 import com.enaide.sdk.map.EnaideTheme
 import com.enaide.sdk.map.MapCameraState
 import com.enaide.sdk.map.MapMarker
+import com.enaide.sdk.map.MarkerKind
 import com.enaide.sdk.map.RouteMap
 import com.enaide.sdk.poi.PoiCategory
 import com.enaide.sdk.model.Deviation
@@ -236,6 +238,18 @@ private fun AppShell(vm: NavViewModel) {
         // La mappa va EDGE-TO-EDGE (anche sotto la status bar): NON applichiamo il
         // top inset al container. Riserviamo solo lo spazio per la bottom bar; gli
         // overlay in alto (search/banner) usano statusBarsPadding per conto loro.
+        // Back di sistema gestito gerarchicamente, così non si esce dall'app per
+        // sbaglio durante la guida e si torna sempre alla mappa.
+        when {
+            // Su tab Settings/Nav: il back riporta alla mappa.
+            tab != AppTab.MAP -> BackHandler { vm.selectTab(AppTab.MAP) }
+            // In anteprima percorso: il back annulla il piano e torna alla mappa libera.
+            screen is Screen.Preview -> BackHandler { vm.clearPlan(); vm.backToMap() }
+            // In navigazione: il back ferma la guida (non chiude l'app).
+            screen is Screen.Driving -> BackHandler { vm.stopDriving() }
+            // Mappa libera: nessun handler → il back esce dall'app (comportamento atteso).
+        }
+
         Box(
             Modifier
                 .fillMaxSize()
@@ -280,9 +294,20 @@ private fun MapScreen(vm: NavViewModel) {
     // possono fare modifiche da qui.
     val navigating = navState is NavigationState.Navigating
     val activeRoute = (navState as? NavigationState.Navigating)?.route
-    // I POI si mostrano SOLO sulla mappa libera, non durante la navigazione attiva.
-    val markers = if (navigating) emptyList()
-        else pois.map { MapMarker(it.point.poiId(), it.point, it.name ?: "POI") }
+    val plan by vm.tripPlan.collectAsState()
+
+    // Marker mostrati: le tappe del viaggio (destinazione rossa, tappe arancio) +
+    // i POI (solo su mappa libera). L'origine non si marca (c'è l'indicatore utente).
+    val markers = buildList {
+        plan.stops.forEachIndexed { i, stop ->
+            if (i == 0) return@forEachIndexed // origine = indicatore utente
+            val kind = if (i == plan.stops.lastIndex) MarkerKind.DESTINATION else MarkerKind.WAYPOINT
+            add(MapMarker("stop-$i", stop.point, stop.label, kind))
+        }
+        if (!navigating) {
+            pois.forEach { add(MapMarker(it.point.poiId(), it.point, it.name ?: "POI", MarkerKind.POI)) }
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
