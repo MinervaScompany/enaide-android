@@ -7,7 +7,10 @@ import android.graphics.Path
 import android.graphics.Color as AndroidColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -114,6 +117,9 @@ fun RouteMap(
     val colors = EnaideTheme.colors
     val mapView = remember { MapView(context) }
     val holder = remember { MapHolder() }
+    // Stato Compose dello style: fa da trigger alle DisposableEffect così, appena
+    // lo style è pronto, marker/camera si aggiornano coi valori CORRENTI.
+    var styleReady by remember { mutableStateOf(false) }
     // Callback aggiornabili senza ricreare la mappa. In SideEffect: mutazione di
     // stato fatta dopo una composizione andata a buon fine, non durante.
     androidx.compose.runtime.SideEffect {
@@ -145,15 +151,13 @@ fun RouteMap(
             map.setStyle(Style.Builder().fromUri("asset://osm_raster_style.json")) { style ->
                 setupLayers(style, colors)
                 holder.styleReady = true
+                styleReady = true // trigger Compose per marker/camera coi valori correnti
+                // Solo il fit iniziale del route qui. Marker e camera-follow sono
+                // gestiti dalle DisposableEffect, che usano i valori CORRENTI (la
+                // closure di setStyle catturerebbe quelli vecchi → camera all'inizio).
                 route?.let {
                     setRouteGeometry(style, it)
                     if (position == null) fitToRoute(map, it)
-                }
-                position?.let {
-                    updatePosition(style, it, bearing)
-                    // All'avvio centra subito sulla posizione con zoom ravvicinato
-                    // (anche senza GPS: parte da Zurigo a livello quartiere).
-                    if (route == null) animateDriveCamera(map, it, bearing, threeD)
                 }
             }
             map.addOnCameraMoveStartedListener { reason ->
@@ -187,27 +191,28 @@ fun RouteMap(
     }
 
     // Aggiorna la geometria del route quando cambia (es. dopo un reroute).
-    DisposableEffect(route?.id) {
+    DisposableEffect(route?.id, styleReady) {
         val map = holder.map
-        if (map != null && holder.styleReady) {
+        if (map != null && styleReady) {
             map.style?.let { style -> route?.let { setRouteGeometry(style, it) } }
         }
         onDispose { }
     }
 
     // Aggiorna i marker POI quando cambiano.
-    DisposableEffect(markers) {
+    DisposableEffect(markers, styleReady) {
         val map = holder.map
-        if (map != null && holder.styleReady) {
+        if (map != null && styleReady) {
             map.style?.let { setMarkers(it, markers) }
         }
         onDispose { }
     }
 
-    // Aggiorna marker + camera a ogni nuovo fix (solo se in follow-mode).
-    DisposableEffect(position, bearing) {
+    // Aggiorna marker + camera a ogni nuovo fix (e appena lo style è pronto),
+    // usando la posizione CORRENTE — solo se in follow-mode.
+    DisposableEffect(position, bearing, styleReady) {
         val map = holder.map
-        if (position != null && map != null && holder.styleReady) {
+        if (position != null && map != null && styleReady) {
             map.style?.let { updatePosition(it, position, bearing) }
             if (cameraState?.followMode != false) {
                 animateDriveCamera(map, position, bearing, threeD)
